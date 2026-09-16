@@ -20,6 +20,7 @@ class CliTests(DuetCase):
         self.assertEqual(raised.exception.code, 0)
 import json
 import os
+import time
 from pathlib import Path
 
 from duet_codex import journal as J
@@ -136,3 +137,25 @@ class CommandTests(DuetCase):
         self.assertEqual(self.run_cli("wait", "--run", str(run), "--event", "2", "--timeout", "-1")[0], 1)
         code, out = self.run_cli("wait", "--run", str(run), "--event", "2", "--timeout", "1")
         self.assertEqual((code, out["status"], out["result"]), (0, "completed", str(run / "code-review-1.json")))
+
+    def test_sigterm_cancels_the_worker_and_its_codex(self):
+        import signal
+        run = self.init()
+        os.environ["DUET_FAKE_MODE"] = "slow"
+        code, out = self.call(run, "--background")
+        self.assertEqual(code, 4)
+        pid = J.load(run)["events"][0]["pid"]
+        for _ in range(100):
+            if subprocess.run(["pgrep", "-f", str(run / "logs")], stdout=subprocess.PIPE).returncode == 0:
+                break
+            time.sleep(0.05)
+        os.kill(pid, signal.SIGTERM)
+        code, out = self.run_cli("wait", "--run", str(run), "--event", "1", "--timeout", "20")
+        self.assertEqual((code, out["status"]), (1, "failed"))
+        self.assertIn("interrupted", out["error"])
+        for _ in range(100):
+            if subprocess.run(["pgrep", "-f", str(run / "logs")], stdout=subprocess.PIPE).returncode != 0:
+                break
+            time.sleep(0.05)
+        else:
+            self.fail("the fake codex survived SIGTERM to the worker")

@@ -213,3 +213,19 @@ class CodexTests(DuetCase):
         for bad in (0, 1, 2):
             with self.assertRaises(DuetError):
                 perform_call(self.run, bad)
+
+    def test_interrupt_during_the_final_tree_check_is_still_recorded(self):
+        event = start_call(self.run, "code-review", self.project, self.material)
+        original = codex.J.tree_state
+
+        def interrupted(cwd):
+            raise KeyboardInterrupt
+        codex.J.tree_state = interrupted
+        try:
+            with self.assertRaises(KeyboardInterrupt):
+                perform_call(self.run, event["n"])
+        finally:
+            codex.J.tree_state = original
+        recorded = J.load(self.run)["events"][0]
+        self.assertEqual((recorded["status"], recorded["tree_after"]), ("stale", None))
+        self.assertIn("tree check failed", recorded["error"])

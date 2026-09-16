@@ -1,6 +1,8 @@
 """One Codex call: reserve the attempt, run, keep the raw answer, validate, record the outcome."""
 import json
 import os
+import signal
+import threading
 from pathlib import Path
 
 from . import journal as J
@@ -105,6 +107,11 @@ def perform_call(run, n):
     run = Path(run).resolve()
     event = J.call_event(J.load(run), n)
     fields = {"status": "failed", "error": None, "session_id": None, "result": None, "returncode": None, "logs": None}
+    previous_handler = None
+    if threading.current_thread() is threading.main_thread():
+        def terminate(signum, frame):  # SIGTERM becomes a normal cancellation: Codex is stopped, the journal is written
+            raise KeyboardInterrupt
+        previous_handler = signal.signal(signal.SIGTERM, terminate)
     try:
         try:
             roles = load_roles()
@@ -152,13 +159,20 @@ def perform_call(run, n):
             fields.update(status="failed", error="interrupted: %s" % type(exc).__name__)
             raise
     finally:
+        pending = None
         try:
             tree_after = J.tree_state(event["cwd"])
-        except Exception as exc:
+        except BaseException as exc:  # an interrupt here must not skip the journal write
             tree_after = None
-            fields["error"] = ((fields["error"] or "") + " | tree check failed: " + str(exc)).strip(" |")
+            fields["error"] = ((fields["error"] or "") + " | tree check failed: %s" % (str(exc) or type(exc).__name__)).strip(" |")
+            if not isinstance(exc, Exception):
+                pending = exc
         changed = tree_after != event["tree_before"]
         if fields["status"] == "completed" and changed:
             fields["status"] = "stale"
         recorded = J.update(run, n, tree_after=tree_after, tree_changed=changed, finished_at=J.utc_now(), **fields)
+        if previous_handler is not None:
+            signal.signal(signal.SIGTERM, previous_handler)
+        if pending is not None:
+            raise pending
     return recorded
