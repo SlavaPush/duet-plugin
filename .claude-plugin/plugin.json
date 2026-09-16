@@ -1,0 +1,6 @@
+{
+  "name": "duet",
+  "version": "0.1.0",
+  "description": "Claude and Codex working together: small tasks, planned features, research and reviews with bounded, journaled Codex calls.",
+  "author": {"name": "Slava Pyshkin"}
+}

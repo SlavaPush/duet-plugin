@@ -1,0 +1,11 @@
+{
+  "name": "duet-plugin",
+  "owner": {"name": "Slava Pyshkin"},
+  "plugins": [
+    {
+      "name": "duet",
+      "source": "./",
+      "description": "Claude and Codex working together: small tasks, planned features, research and reviews with bounded, journaled Codex calls."
+    }
+  ]
+}
