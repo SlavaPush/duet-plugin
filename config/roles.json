@@ -1,0 +1,11 @@
+{
+  "codex": {"model": "gpt-6-astra"},
+  "stages": {
+    "plan-review": {"effort": "xhigh", "resume_effort": "high", "limit": 3},
+    "code-review": {"effort": "xhigh", "resume_effort": "high", "limit": 4},
+    "critique": {"effort": "xhigh", "resume_effort": "high", "limit": 2},
+    "mr-review": {"effort": "xhigh", "resume_effort": "high", "limit": 2}
+  },
+  "timeouts": {"call_seconds": 1800},
+  "limits": {"max_log_bytes": 16777216}
+}
