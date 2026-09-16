@@ -47,7 +47,8 @@ def tree_state(cwd):
     """HEAD plus a digest of the diff against HEAD and of every untracked, non-ignored file."""
     root = repo_root(cwd)
     head = git(root, "rev-parse", "HEAD").decode().strip()
-    diff = git(root, "diff", "HEAD", "--binary", "--no-ext-diff", "--no-textconv", "--no-color")
+    diff = git(root, "diff", "HEAD", "--binary", "--no-ext-diff", "--no-textconv", "--no-color",
+               "--ignore-submodules=none")
     digest = hashlib.sha256(b"diff %d\n" % len(diff) + diff)
     for name in git(root, "ls-files", "--others", "--exclude-standard", "-z").split(b"\0"):
         if not name:
@@ -56,7 +57,8 @@ def tree_state(cwd):
         if path.is_symlink():
             kind, data = b"link", os.fsencode(os.readlink(path))
         else:
-            kind, data = b"file", path.read_bytes()
+            kind = b"exec" if path.stat().st_mode & 0o111 else b"file"
+            data = path.read_bytes()
         digest.update(b"%s %d %d\n" % (kind, len(name), len(data)) + name + data)
     return {"head": head, "hash": digest.hexdigest()}
 
@@ -138,3 +140,13 @@ def update(run, n, **fields):
 
 def attempts(journal, stage):
     return sum(1 for event in journal["events"] if event["kind"] == "call" and event["stage"] == stage)
+
+
+def call_event(journal, n):
+    """The Codex call recorded as event n, or a DuetError naming the problem."""
+    if type(n) is not int or not 1 <= n <= len(journal["events"]):
+        raise DuetError("No journal event %r" % (n,))
+    event = journal["events"][n - 1]
+    if event.get("kind") != "call":
+        raise DuetError("Journal event %d is not a Codex call" % n)
+    return event

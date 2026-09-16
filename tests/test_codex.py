@@ -1,10 +1,13 @@
 import json
 import os
+import subprocess
+import threading
 
 from helpers import DuetCase
 from duet_codex import journal as J
+from duet_codex import codex
 from duet_codex.codex import build_prompt, exec_argv, parse_events, perform_call, resume_argv, start_call
-from duet_codex.errors import LimitReached
+from duet_codex.errors import DuetError, LimitReached
 
 
 class CodexTests(DuetCase):
@@ -121,3 +124,92 @@ class CodexTests(DuetCase):
         (self.project / "a.py").write_text("answer = 4\n")
         done = perform_call(self.run, event["n"])
         self.assertEqual((done["status"], done["tree_changed"]), ("invalid", True))
+
+    def test_task_file_is_a_prompt_section_and_schema_comes_from_the_plugin(self):
+        (self.run / "task.md").write_text("Fix the average function\n", encoding="utf-8")
+        done = perform_call(self.run, start_call(self.run, "code-review", self.project, self.material)["n"])
+        prompt = self.calls()[0]["prompt"]
+        self.assertLess(prompt.index("## Task"), prompt.index("## Material"))
+        self.assertIn("Fix the average function", prompt)
+        argv = self.calls()[0]["argv"]
+        self.assertTrue(argv[argv.index("--output-schema") + 1].endswith("schemas/review.json"))
+        self.assertFalse((self.run / "logs" / "review.schema.json").exists())
+        self.assertEqual(done["pid"], os.getpid())
+
+    def test_answer_problems_end_in_terminal_statuses(self):
+        expected = {"no-answer": ("failed", "no answer file"), "no-session": ("failed", "session ID"),
+                    "turn-failed": ("failed", "fake turn failure"), "garbage": ("invalid", "schema")}
+        for mode, (status, message) in expected.items():
+            with self.subTest(mode=mode):
+                os.environ["DUET_FAKE_MODE"] = mode
+                run = J.create_run(self.project, "task", {"code-review": 9})
+                done = perform_call(run, start_call(run, "code-review", self.project, self.material)["n"])
+                self.assertEqual(done["status"], status, done["error"])
+                self.assertIn(message, done["error"])
+
+    def test_tree_check_failure_after_the_call_is_not_approval(self):
+        event = start_call(self.run, "code-review", self.project, self.material)
+        original = codex.J.tree_state
+        calls = []
+
+        def flaky(cwd):
+            calls.append(cwd)
+            raise OSError("vanished")
+        codex.J.tree_state = flaky
+        try:
+            done = perform_call(self.run, event["n"])
+        finally:
+            codex.J.tree_state = original
+        self.assertEqual((done["status"], done["tree_after"], done["tree_changed"]), ("stale", None, True))
+        self.assertIn("tree check failed", done["error"])
+
+    def test_interrupt_leaves_a_terminal_status(self):
+        event = start_call(self.run, "code-review", self.project, self.material)
+        original = codex.run_process
+
+        def interrupted(*args, **kwargs):
+            raise KeyboardInterrupt
+        codex.run_process = interrupted
+        try:
+            with self.assertRaises(KeyboardInterrupt):
+                perform_call(self.run, event["n"])
+        finally:
+            codex.run_process = original
+        recorded = J.load(self.run)["events"][0]
+        self.assertEqual(recorded["status"], "failed")
+        self.assertIn("interrupted", recorded["error"])
+
+    def test_concurrent_reservations_respect_the_limit(self):
+        run = J.create_run(self.project, "task", {"code-review": 1})
+        outcomes = []
+
+        def reserve():
+            try:
+                outcomes.append(start_call(run, "code-review", self.project, self.material)["attempt"])
+            except LimitReached:
+                outcomes.append("limit")
+        threads = [threading.Thread(target=reserve) for _ in range(4)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(sorted(outcomes, key=str), [1, "limit", "limit", "limit"])
+
+    def test_call_from_a_linked_worktree_keeps_the_run_in_the_checkout(self):
+        worktree = self.temp / "wt"
+        self.git("worktree", "add", "-q", "-b", "wt", str(worktree))
+        (worktree / "a.py").write_text("answer = 42\n", encoding="utf-8")
+        event = start_call(self.run, "code-review", worktree, self.material)
+        done = perform_call(self.run, event["n"])
+        self.assertEqual(done["status"], "completed", done["error"])
+        self.assertEqual(done["cwd"], str(worktree.resolve()))
+        self.assertEqual(done["tree_before"]["head"], self.git("rev-parse", "wt").decode().strip())
+        self.assertEqual(self.calls()[0]["cwd"], str(worktree.resolve()))
+        self.assertTrue((self.run / done["result"]).exists())
+        self.assertEqual(self.git("status", "--porcelain"), b"")
+
+    def test_perform_call_rejects_bad_event_numbers(self):
+        J.append(self.run, {"kind": "stage", "stage": "freeze", "status": "done"})
+        for bad in (0, 1, 2):
+            with self.assertRaises(DuetError):
+                perform_call(self.run, bad)

@@ -1,6 +1,7 @@
 """duet-codex: one journaled Codex call per invocation plus run bookkeeping."""
 import argparse
 import json
+import math
 import os
 import subprocess
 import sys
@@ -16,6 +17,7 @@ from .errors import DuetError, LimitReached
 EXIT = {"completed": 0, "failed": 1, "invalid": 2, "running": 4, "stale": 5}
 SCENARIOS = ("task", "feature", "research", "review")
 CLAUDE_STAGES = ("research", "plan", "worktree", "freeze", "implement", "stage-review", "synthesis", "report")
+CODEX_STAGES = ("plan-review", "code-review", "critique", "mr-review")
 BIN = Path(__file__).resolve().parents[2] / "bin" / "duet-codex"
 PYTHON = sys.executable
 DETACHED = []  # background workers are never waited for; keeping the handles avoids finalizer noise
@@ -26,8 +28,12 @@ def emit(value):
     print(json.dumps(value, ensure_ascii=False))
 
 
-def summary(event):
-    return {key: event.get(key) for key in SUMMARY_KEYS}
+def summary(event, run):
+    value = {key: event.get(key) for key in SUMMARY_KEYS}
+    for key in ("result", "raw"):
+        if value.get(key):
+            value[key] = str(Path(run).resolve() / value[key])
+    return value
 
 
 def cmd_init(args):
@@ -62,7 +68,7 @@ def cmd_call(args):
             event = J.update(run, event["n"], pid=process.pid)
     else:
         event = perform_call(run, event["n"])
-    emit(summary(event))
+    emit(summary(event, run))
     return EXIT[event["status"]]
 
 
@@ -72,9 +78,11 @@ def cmd_worker(args):
 
 
 def cmd_wait(args):
+    if not math.isfinite(args.timeout) or args.timeout < 0:
+        raise DuetError("--timeout must be a finite, non-negative number of seconds")
     deadline = time.monotonic() + args.timeout
     while True:
-        event = J.load(args.run)["events"][args.event - 1]
+        event = J.call_event(J.load(args.run), args.event)
         if event["status"] != "running":
             break
         if event.get("pid") and not alive(event["pid"]):
@@ -89,13 +97,13 @@ def cmd_wait(args):
         if time.monotonic() >= deadline:
             break
         time.sleep(min(2, max(0.05, deadline - time.monotonic())))
-    emit(summary(event))
+    emit(summary(event, args.run))
     return EXIT[event["status"]]
 
 
 def cmd_status(args):
     journal = J.load(args.run)
-    events = [summary(event) if event["kind"] == "call" else
+    events = [summary(event, args.run) if event["kind"] == "call" else
               {key: event.get(key) for key in ("n", "kind", "stage", "status", "note")}
               for event in journal["events"]]
     emit({"scenario": journal["scenario"], "project": journal["project"], "limits": journal["limits"], "events": events})
@@ -165,7 +173,7 @@ def build_parser():
 
     p = sub.add_parser("mark", help="record a Claude stage in the journal")
     p.add_argument("--run", required=True)
-    p.add_argument("--stage", required=True, choices=CLAUDE_STAGES)
+    p.add_argument("--stage", required=True, choices=CLAUDE_STAGES + CODEX_STAGES)
     p.add_argument("--status", required=True, choices=("started", "done", "needs_human"))
     p.add_argument("--note", default="")
     p.set_defaults(func=cmd_mark)

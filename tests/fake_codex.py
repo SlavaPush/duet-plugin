@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Fake Codex CLI for offline tests. DUET_FAKE_MODE: ok | invalid | fail | slow (waits for DUET_FAKE_RELEASE)."""
+"""Fake Codex CLI for offline tests.
+
+DUET_FAKE_MODE: ok | invalid (wrong shape) | garbage (not JSON) | fail (exit 1) | no-answer | no-session |
+turn-failed | slow (waits for DUET_FAKE_RELEASE).
+"""
 import json
 import os
 import sys
@@ -30,6 +34,8 @@ finding = {"id": "X-1", "severity": "blocking", "file": "a.py", "start_line": 1,
            "description": "fake finding", "suggestion": "fix it"}
 if mode == "invalid":
     body = '{"verdict": "maybe"}'
+elif mode == "garbage":
+    body = "not json {"
 elif "claim_reviews" in schema["properties"]:
     body = json.dumps({"summary": "fake critique",
                        "claim_reviews": [{"id": "R-1", "result": "confirmed", "note": "checked"}],
@@ -39,8 +45,13 @@ else:
     body = json.dumps({"verdict": verdict, "summary": "fake review",
                        "findings": [] if verdict == "pass" else [finding],
                        "resolved_ids": ["X-1"] if verdict == "pass" else [], "questions": []})
-with open(out, "w", encoding="utf-8") as stream:
-    stream.write(body)
+if mode != "no-answer":
+    with open(out, "w", encoding="utf-8") as stream:
+        stream.write(body)
 session = args[args.index("resume") + 1] if "resume" in args else "fake-session-1"
-print(json.dumps({"type": "thread.started", "thread_id": session}))
-print(json.dumps({"type": "turn.completed", "usage": {}}))
+if mode != "no-session":
+    print(json.dumps({"type": "thread.started", "thread_id": session}))
+if mode == "turn-failed":
+    print(json.dumps({"type": "turn.failed", "error": "fake turn failure"}))
+else:
+    print(json.dumps({"type": "turn.completed", "usage": {}}))

@@ -1,5 +1,6 @@
 """Plugin defaults merged with the user's ~/.config/duet/roles.json; every leaf is validated."""
 import json
+import math
 import os
 from pathlib import Path
 
@@ -48,8 +49,8 @@ def validate_roles(roles):
                 raise DuetError("roles.stages.%s.%s must be one of %s" % (stage, key, ", ".join(EFFORTS)))
         positive_int(value.get("limit"), "roles.stages.%s.limit" % stage)
     seconds = roles["timeouts"].get("call_seconds")
-    if type(seconds) not in (int, float) or seconds <= 0:
-        raise DuetError("roles.timeouts.call_seconds must be a positive number")
+    if type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds <= 0:
+        raise DuetError("roles.timeouts.call_seconds must be a positive finite number")
     positive_int(roles["limits"].get("max_log_bytes"), "roles.limits.max_log_bytes")
     return roles
 

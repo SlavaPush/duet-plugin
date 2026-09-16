@@ -52,15 +52,20 @@ class CommandTests(DuetCase):
         run = self.init()
         code, out = self.call(run)
         self.assertEqual((code, out["status"], out["n"], out["tree_changed"]), (0, "completed", 1, False))
+        self.assertEqual(out["result"], str(run / "code-review-1.json"))
+        self.assertEqual(out["raw"], str(run / "code-review-1.raw.md"))
         code, _ = self.run_cli("mark", "--run", str(run), "--stage", "implement", "--status", "done", "--note", "3 files")
+        self.assertEqual(code, 0)
+        code, _ = self.run_cli("mark", "--run", str(run), "--stage", "code-review", "--status", "needs_human", "--note", "limit")
         self.assertEqual(code, 0)
         with self.assertRaises(SystemExit):
             self.run_cli("mark", "--run", str(run), "--stage", "implemnt", "--status", "done")
         code, out = self.run_cli("status", "--run", str(run))
         self.assertEqual(code, 0)
-        self.assertEqual([e.get("stage") for e in out["events"]], ["code-review", "implement"])
+        self.assertEqual([e.get("stage") for e in out["events"]], ["code-review", "implement", "code-review"])
         self.assertEqual(out["events"][1]["note"], "3 files")
         self.assertEqual(set(out["events"][0]["tree_after"]), {"head", "hash"})
+        self.assertEqual(out["events"][0]["result"], str(run / "code-review-1.json"))
         os.environ["DUET_FAKE_MODE"] = "invalid"
         code, out = self.call(run)
         self.assertEqual((code, out["status"]), (2, "invalid"))
@@ -119,3 +124,15 @@ class CommandTests(DuetCase):
             cli.PYTHON = original
         self.assertEqual((code, out["status"]), (1, "failed"))
         self.assertIn("worker", out["error"])
+
+    def test_wait_validates_event_and_timeout(self):
+        run = self.init()
+        J.append(run, {"kind": "stage", "stage": "freeze", "status": "done"})
+        self.assertEqual(self.run_cli("wait", "--run", str(run), "--event", "0", "--timeout", "1")[0], 1)
+        self.assertEqual(self.run_cli("wait", "--run", str(run), "--event", "1", "--timeout", "1")[0], 1)
+        self.assertEqual(self.run_cli("wait", "--run", str(run), "--event", "5", "--timeout", "1")[0], 1)
+        self.call(run)
+        self.assertEqual(self.run_cli("wait", "--run", str(run), "--event", "2", "--timeout", "inf")[0], 1)
+        self.assertEqual(self.run_cli("wait", "--run", str(run), "--event", "2", "--timeout", "-1")[0], 1)
+        code, out = self.run_cli("wait", "--run", str(run), "--event", "2", "--timeout", "1")
+        self.assertEqual((code, out["status"], out["result"]), (0, "completed", str(run / "code-review-1.json")))

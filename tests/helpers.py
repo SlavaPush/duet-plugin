@@ -32,7 +32,8 @@ class DuetCase(unittest.TestCase):
         shutil.copy(ROOT / "tests/fake_codex.py", fake)
         fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
         self.log = self.temp / "codex-calls.jsonl"
-        os.environ.pop("DUET_FAKE_SLEEP", None)
+        for key in [k for k in os.environ if k.startswith("GIT_") or k == "DUET_FAKE_SLEEP"]:
+            os.environ.pop(key, None)
         os.environ.update({
             "PATH": str(fake_bin) + os.pathsep + os.environ["PATH"],
             "XDG_CONFIG_HOME": str(self.temp / "config"),
@@ -53,9 +54,15 @@ class DuetCase(unittest.TestCase):
         os.environ.update(self.saved_environ)
 
     def release_fake(self):
-        """Let any waiting fake call finish before the temp directory disappears."""
+        """Let any waiting fake call and detached worker finish before the temp directory disappears."""
         self.release.touch()
-        time.sleep(0.2)
+        from duet_codex import cli
+        for process in cli.DETACHED:
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+        cli.DETACHED.clear()
 
     def git(self, *args):
         return subprocess.run(["git", *args], cwd=str(self.project), check=True,

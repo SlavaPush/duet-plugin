@@ -70,6 +70,15 @@ class JournalTests(DuetCase):
         (self.project / "new.txt").unlink()
         os.symlink("target", self.project / "new.txt")
         self.assertNotEqual(with_file["hash"], J.tree_state(self.project)["hash"])
+        os.symlink("elsewhere", self.project / "other.lnk")
+        with_second_link = J.tree_state(self.project)
+        (self.project / "other.lnk").unlink()
+        (self.project / "other.lnk").write_text("x")
+        (self.project / "other.lnk").chmod(0o644)
+        plain = J.tree_state(self.project)
+        self.assertNotEqual(with_second_link["hash"], plain["hash"])
+        (self.project / "other.lnk").chmod(0o755)
+        self.assertNotEqual(plain["hash"], J.tree_state(self.project)["hash"])
         (self.project / "ignored.log").write_text("noise")
         (self.project / ".gitignore").write_text("*.log\n")
         with_ignore = J.tree_state(self.project)
@@ -82,3 +91,12 @@ class JournalTests(DuetCase):
     def test_git_errors_are_actionable(self):
         with self.assertRaisesRegex(DuetError, "git"):
             J.tree_state(self.temp)
+
+    def test_call_event_validates_number_and_kind(self):
+        run = J.create_run(self.project, "review", {})
+        J.append(run, {"kind": "stage", "stage": "freeze", "status": "done"})
+        J.append(run, {"kind": "call", "stage": "mr-review", "status": "running"})
+        self.assertEqual(J.call_event(J.load(run), 2)["stage"], "mr-review")
+        for bad in (0, 3, -1, 1):
+            with self.assertRaises(DuetError):
+                J.call_event(J.load(run), bad)

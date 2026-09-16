@@ -1,12 +1,13 @@
 """One Codex call: reserve the attempt, run, keep the raw answer, validate, record the outcome."""
 import json
+import os
 from pathlib import Path
 
 from . import journal as J
 from .config import PLUGIN_ROOT, load_roles, stage_settings
 from .errors import DuetError, LimitReached, ProcessLimitError
 from .process import excerpt, run_process
-from .schema import DEFAULT_SCHEMAS, load_schema, validate_schema
+from .schema import DEFAULT_SCHEMAS, SCHEMA_DIR, load_schema, validate_schema
 
 PROMPT_DIR = PLUGIN_ROOT / "prompts"
 
@@ -71,7 +72,8 @@ def start_call(run, stage, cwd, prompt_file, context_files=(), schema=None, resu
         raise DuetError("No default schema for stage %s; pass --schema" % stage)
     load_schema(schema_name)
     role_prompt = read_text(PROMPT_DIR / (stage + ".md"))
-    sections = [("Material", read_text(prompt_file))]
+    sections = [("Task", read_text(run / "task.md"))] if (run / "task.md").exists() else []
+    sections.append(("Material", read_text(prompt_file)))
     sections += [("Context: " + Path(path).name, read_text(path)) for path in context_files]
     text = build_prompt(role_prompt, sections)
     tree = J.tree_state(cwd)
@@ -91,7 +93,7 @@ def start_call(run, stage, cwd, prompt_file, context_files=(), schema=None, resu
             "prompt_bytes": len(text.encode("utf-8")), "resume_of": resume, "session_id": None,
             "status": "running", "tree_before": tree, "tree_after": None, "tree_changed": None,
             "raw": "%s-%d.raw.md" % (stage, attempt), "result": None, "error": None, "returncode": None,
-            "logs": None, "pid": None, "started_at": J.utc_now(), "finished_at": None,
+            "logs": None, "pid": os.getpid(), "started_at": J.utc_now(), "finished_at": None,
             "n": len(journal["events"]) + 1, "at": J.utc_now()}
         journal["events"].append(entry)
         return entry
@@ -99,59 +101,64 @@ def start_call(run, stage, cwd, prompt_file, context_files=(), schema=None, resu
 
 
 def perform_call(run, n):
-    """Run the Codex call recorded as event n; always leaves a terminal status."""
+    """Run the Codex call recorded as event n; always leaves a terminal status, even when interrupted."""
     run = Path(run).resolve()
-    event = J.load(run)["events"][n - 1]
+    event = J.call_event(J.load(run), n)
     fields = {"status": "failed", "error": None, "session_id": None, "result": None, "returncode": None, "logs": None}
     try:
-        roles = load_roles()
-        schema = load_schema(event["schema"])
-        schema_path = run / "logs" / (event["schema"] + ".schema.json")
-        schema_path.write_text(json.dumps(schema), encoding="utf-8")
-        raw_path = run / event["raw"]
-        if event["resume_of"]:
-            argv = resume_argv(event["resume_of"], event["model"], event["effort"], schema_path, raw_path)
-        else:
-            argv = exec_argv(event["cwd"], event["model"], event["effort"], schema_path, raw_path)
-        prefix = run / "logs" / ("%s-%d" % (event["stage"], event["attempt"]))
-        prompt = read_text(run / event["prompt"])
         try:
-            outcome = run_process(argv, event["cwd"], prefix, roles["timeouts"]["call_seconds"], prompt,
-                                  roles["limits"]["max_log_bytes"])
-        except ProcessLimitError as exc:
-            outcome = dict(exc.result, error=str(exc))
-        fields["returncode"] = outcome["returncode"]
-        fields["logs"] = {"stdout": outcome["stdout"], "stderr": outcome["stderr"]}
-        session_id, completed, failure = parse_events(outcome["stdout"])
-        fields["session_id"] = session_id or event["resume_of"]
-        if outcome.get("error"):
-            fields["error"] = outcome["error"]
-        elif outcome["returncode"]:
-            fields["error"] = "codex exited %s: %s" % (outcome["returncode"], excerpt(outcome["stderr"], 1500).strip())
-        elif failure or not completed:
-            fields["error"] = failure or "codex did not report a completed turn"
-        elif not fields["session_id"]:
-            fields["error"] = "codex did not report a session ID; this review could not be resumed"
-        elif not raw_path.exists():
-            fields["error"] = "codex produced no answer file"
-        else:
-            try:
-                value = json.loads(raw_path.read_text(encoding="utf-8"))
-                validate_schema(value, schema)
-            except (ValueError, DuetError) as exc:
-                fields.update(status="invalid", error="answer does not match schema %s: %s" % (event["schema"], exc))
+            roles = load_roles()
+            schema = load_schema(event["schema"])
+            schema_path = SCHEMA_DIR / (event["schema"] + ".json")
+            raw_path = run / event["raw"]
+            if event["resume_of"]:
+                argv = resume_argv(event["resume_of"], event["model"], event["effort"], schema_path, raw_path)
             else:
-                result = "%s-%d.json" % (event["stage"], event["attempt"])
-                (run / result).write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-                fields.update(status="completed", result=result)
-    except Exception as exc:  # any failure must still leave a terminal status in the journal
-        fields.update(status="failed", error="%s: %s" % (type(exc).__name__, exc))
-    try:
-        tree_after = J.tree_state(event["cwd"])
-    except DuetError as exc:
-        tree_after = None
-        fields["error"] = ((fields["error"] or "") + " | tree check failed: " + str(exc)).strip(" |")
-    changed = tree_after != event["tree_before"]
-    if fields["status"] == "completed" and changed:
-        fields["status"] = "stale"
-    return J.update(run, n, tree_after=tree_after, tree_changed=changed, finished_at=J.utc_now(), **fields)
+                argv = exec_argv(event["cwd"], event["model"], event["effort"], schema_path, raw_path)
+            prefix = run / "logs" / ("%s-%d" % (event["stage"], event["attempt"]))
+            prompt = read_text(run / event["prompt"])
+            try:
+                outcome = run_process(argv, event["cwd"], prefix, roles["timeouts"]["call_seconds"], prompt,
+                                      roles["limits"]["max_log_bytes"])
+            except ProcessLimitError as exc:
+                outcome = dict(exc.result, error=str(exc))
+            fields["returncode"] = outcome["returncode"]
+            fields["logs"] = {"stdout": outcome["stdout"], "stderr": outcome["stderr"]}
+            session_id, completed, failure = parse_events(outcome["stdout"])
+            fields["session_id"] = session_id or event["resume_of"]
+            if outcome.get("error"):
+                fields["error"] = outcome["error"]
+            elif outcome["returncode"]:
+                fields["error"] = "codex exited %s: %s" % (outcome["returncode"], excerpt(outcome["stderr"], 1500).strip())
+            elif failure or not completed:
+                fields["error"] = failure or "codex did not report a completed turn"
+            elif not fields["session_id"]:
+                fields["error"] = "codex did not report a session ID; this review could not be resumed"
+            elif not raw_path.exists():
+                fields["error"] = "codex produced no answer file"
+            else:
+                try:
+                    value = json.loads(raw_path.read_text(encoding="utf-8"))
+                    validate_schema(value, schema)
+                except (ValueError, DuetError) as exc:
+                    fields.update(status="invalid", error="answer does not match schema %s: %s" % (event["schema"], exc))
+                else:
+                    result = "%s-%d.json" % (event["stage"], event["attempt"])
+                    (run / result).write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                    fields.update(status="completed", result=result)
+        except Exception as exc:  # any failure must still leave a terminal status in the journal
+            fields.update(status="failed", error="%s: %s" % (type(exc).__name__, exc))
+        except BaseException as exc:  # KeyboardInterrupt, SystemExit: record, then propagate
+            fields.update(status="failed", error="interrupted: %s" % type(exc).__name__)
+            raise
+    finally:
+        try:
+            tree_after = J.tree_state(event["cwd"])
+        except Exception as exc:
+            tree_after = None
+            fields["error"] = ((fields["error"] or "") + " | tree check failed: " + str(exc)).strip(" |")
+        changed = tree_after != event["tree_before"]
+        if fields["status"] == "completed" and changed:
+            fields["status"] = "stale"
+        recorded = J.update(run, n, tree_after=tree_after, tree_changed=changed, finished_at=J.utc_now(), **fields)
+    return recorded

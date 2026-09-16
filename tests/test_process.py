@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -25,13 +26,12 @@ class ProcessTests(DuetCase):
         self.assertEqual(raised.exception.result["returncode"], 124)
         child = int(pid_file.read_text())
         for _ in range(50):
-            try:
-                os.kill(child, 0)
-            except OSError:
+            state = subprocess.run(["ps", "-o", "stat=", "-p", str(child)], stdout=subprocess.PIPE).stdout.decode().strip()
+            if not state or state.startswith("Z"):
                 break
             time.sleep(0.05)
         else:
-            self.fail("grandchild survived the timeout")
+            self.fail("grandchild survived the timeout: state %r" % state)
 
     def test_missing_executable_is_actionable(self):
         with self.assertRaises(DuetError):

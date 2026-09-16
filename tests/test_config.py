@@ -34,6 +34,7 @@ class ConfigTests(DuetCase):
             ({"codex": {"model": {"typo": 1}}}, "roles.codex.model"),
             ({"codex": {"model": " "}}, "roles.codex.model"),
             ({"timeouts": {"call_seconds": "oops"}}, "roles.timeouts.call_seconds"),
+            ({"timeouts": {"call_seconds": 1e309}}, "roles.timeouts.call_seconds"),
             ({"limits": {"max_log_bytes": False}}, "roles.limits.max_log_bytes"),
             ({"stages": "nope"}, "roles.stages must be an object"),
         ]
