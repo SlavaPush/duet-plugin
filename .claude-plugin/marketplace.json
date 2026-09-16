@@ -1,6 +1,9 @@
 {
   "name": "duet-plugin",
-  "owner": {"name": "Slava Pyshkin"},
+  "description": "Duet: Claude and Codex working together in Claude Code.",
+  "owner": {
+    "name": "Slava Pyshkin"
+  },
   "plugins": [
     {
       "name": "duet",
