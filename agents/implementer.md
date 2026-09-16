@@ -17,7 +17,7 @@ Procedure
 2. Implement in the current working directory. Follow the rule files. Add or update tests that fail without your change.
 3. Run every check command. Fix failures before asking for review. Save the combined output to `<run>/checks-N.log`.
 4. Write `<run>/implementation-N.md`: files changed and why, how you verified, anything you deliberately left out.
-5. Write the review material `<run>/code-review-material-N.md` with: the task or plan summary and acceptance criteria; the review subject exactly as the protocol defines it for a working tree against the base commit (`git diff <base> --stat`, `git diff <base>`, and the untracked files listed as "read in full"); the check results. Then run the adapter:
+5. Write the review material `<run>/code-review-material-N.md` with: the plan summary when there is a plan (`task.md` is added to the prompt automatically); the review subject exactly as the protocol defines it for a working tree against the base commit (`git diff <base> --stat`, `git diff <base>`, and the untracked files listed as "read in full"); the check results. Then run the adapter:
    `<adapter> call --run <run> --stage code-review --prompt <run>/code-review-material-N.md --cwd . [--context <rule file>]...`
    For a return, add `--resume <session_id>` to this first call and describe per open finding ID what changed. Read the printed `result` path.
 6. Exit codes: 0 read the verdict; 2 invalid: the raw answer is kept, do not call again, report it; 3 limit reached: stop and report; 1 failed or 5 stale: stop and report the printed error. Never call again after 1, 2, 3 or 5.

@@ -9,7 +9,7 @@ Adapter path: `${CLAUDE_PLUGIN_ROOT}/bin/duet-codex`. Call it as `duet-codex` fr
 `duet-codex init --scenario <task|feature|research|review> --cwd <project root>` creates `<repo>/.duet/runs/<scenario>-<timestamp>/` (excluded from git through `.git/info/exclude`) and prints `{"run": "<absolute path>"}`. Use that absolute path as `<run>` everywhere. Create the run before writing any material. Keep everything the run produces inside it:
 
 - `task.md`: the task and acceptance criteria as understood, the base commit (`git rev-parse HEAD` at run start) and the check commands; `context/`: external material saved as files.
-- `journal.json`: the timeline. `duet-codex` writes Codex calls; record Claude stages with `duet-codex mark --run <run> --stage <research|plan|worktree|freeze|implement|stage-review|synthesis|report> --status <started|done|needs_human> [--note TEXT]`.
+- `journal.json`: the timeline. `duet-codex` writes Codex calls; record Claude stages with `duet-codex mark --run <run> --stage <research|plan|worktree|freeze|implement|stage-review|synthesis|report> --status <started|done|needs_human> [--note TEXT]`. A `needs_human` mark may also name the Codex stage that stopped the run (`plan-review`, `code-review`, `critique`, `mr-review`).
 - Stage artifacts by name and attempt: `plan.md`, `plan-review-N.json`, `implementation-N.md`, `checks-N.log`, `code-review-material-N.md`, `code-review-N.json`, `research.md`, `critique-N.json`, `review-claude.md`, `mr-review-N.json`, `synthesis.md`, `report.md`. Raw Codex answers are `<stage>-N.raw.md`, assembled prompts `<stage>-N.prompt.md`, CLI logs under `logs/`.
 
 ## Commands
@@ -23,7 +23,7 @@ duet-codex mark --run <run> --stage <stage> --status <status> [--note TEXT]
 duet-codex limit --run <run> --stage <stage> --set N        # only when the user asks
 ```
 
-Stages for `call`: `plan-review`, `code-review`, `critique`, `mr-review`. `--prompt` is the material file you write for this call; the role prompt is added automatically. `--cwd` is the directory Codex reads and whose state is hashed: the project root, the feature worktree, or the head worktree of a branch review. `call` prints one JSON line with `n`, `stage`, `attempt`, `status`, `result`, `raw`, `session_id`, `error`, `tree_changed`, `tree_after`; exit codes: 0 completed, 1 failed, 2 invalid, 3 limit reached, 4 running, 5 stale. Read results from the printed `result` path, never from a guessed file name. For long calls pass `--background`, then `duet-codex wait --run <run> --event N --timeout 600`, repeating while it exits 4.
+Stages for `call`: `plan-review`, `code-review`, `critique`, `mr-review`. `--prompt` is the material file you write for this call; the role prompt and `<run>/task.md` (when it exists) are added automatically, so materials never repeat the task text. `--cwd` is the directory Codex reads and whose state is hashed: the project root, the feature worktree, or the head worktree of a branch review. `call` prints one JSON line with `n`, `stage`, `attempt`, `status`, `result`, `raw`, `session_id`, `error`, `tree_changed`, `tree_after`; exit codes: 0 completed, 1 failed, 2 invalid, 3 limit reached, 4 running, 5 stale. `result` and `raw` are absolute paths; read results from the printed `result` path, never from a guessed file name. For long calls pass `--background`, then `duet-codex wait --run <run> --event N --timeout 600`, repeating while it exits 4.
 
 ## Rules
 
@@ -43,7 +43,7 @@ Both reviewers of a change must see the same complete subject. Define it once in
 - **Working tree against a base commit** (task, feature, working-tree review): `git diff <base> --stat` and `git diff <base>` (includes staged and unstaged changes to tracked files), plus `git ls-files --others --exclude-standard` listed as "untracked files: read in full". Reviewers run in the project root (or the feature worktree).
 - **Branch** (`--base <ref> --head <ref>`): resolve both once, `BASE=$(git rev-parse <base>)`, `HEAD_SHA=$(git rev-parse <head>)`; create a detached checkout `git worktree add --detach <run>/head $HEAD_SHA`; the subject is `git -C <run>/head diff $BASE...$HEAD_SHA --stat` and `git -C <run>/head diff $BASE...$HEAD_SHA`, saved to `<run>/context/diff.patch`. Reviewers run in `<run>/head` (Codex `--cwd <run>/head`; the reviewer subagent gets that path as its root). After synthesis, `git worktree remove <run>/head`; if removal fails, record the path in the report instead of forcing it.
 
-Record `freeze` with the tree state of the reviewed directory before dispatching, and check it again after both reviews.
+Order matters: record `freeze` with `duet-codex tree --cwd <reviewed dir>` before preparing the diff and material, compare again right before dispatching (rebuild the material if it changed), and once more after both reviews. Submodule contents are not hashed recursively; only the recorded submodule commit and its dirty flag are.
 
 ## Implementation stage
 
