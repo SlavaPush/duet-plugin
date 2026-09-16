@@ -145,17 +145,23 @@ class CommandTests(DuetCase):
         code, out = self.call(run, "--background")
         self.assertEqual(code, 4)
         pid = J.load(run)["events"][0]["pid"]
-        for _ in range(100):
-            if subprocess.run(["pgrep", "-f", str(run / "logs")], stdout=subprocess.PIPE).returncode == 0:
+        pattern = str(run / "code-review-1.raw.md")  # only the fake codex has the answer path in its argv
+        for _ in range(200):
+            found = subprocess.run(["pgrep", "-f", pattern], stdout=subprocess.PIPE).stdout.split()
+            if found:
                 break
             time.sleep(0.05)
+        else:
+            self.fail("the fake codex did not start")
+        codex_pid = int(found[0])
         os.kill(pid, signal.SIGTERM)
         code, out = self.run_cli("wait", "--run", str(run), "--event", "1", "--timeout", "20")
         self.assertEqual((code, out["status"]), (1, "failed"))
         self.assertIn("interrupted", out["error"])
         for _ in range(100):
-            if subprocess.run(["pgrep", "-f", str(run / "logs")], stdout=subprocess.PIPE).returncode != 0:
+            state = subprocess.run(["ps", "-o", "stat=", "-p", str(codex_pid)], stdout=subprocess.PIPE).stdout.decode().strip()
+            if not state or state.startswith("Z"):
                 break
             time.sleep(0.05)
         else:
-            self.fail("the fake codex survived SIGTERM to the worker")
+            self.fail("the fake codex survived SIGTERM to the worker: state %r" % state)
