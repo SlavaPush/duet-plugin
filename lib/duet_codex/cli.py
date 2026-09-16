@@ -1,7 +1,10 @@
 """duet-codex: one journaled Codex call per invocation plus run bookkeeping."""
 import argparse
 import json
+import os
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 from . import VERSION
@@ -13,6 +16,9 @@ from .errors import DuetError, LimitReached
 EXIT = {"completed": 0, "failed": 1, "invalid": 2, "running": 4, "stale": 5}
 SCENARIOS = ("task", "feature", "research", "review")
 CLAUDE_STAGES = ("research", "plan", "worktree", "freeze", "implement", "stage-review", "synthesis", "report")
+BIN = Path(__file__).resolve().parents[2] / "bin" / "duet-codex"
+PYTHON = sys.executable
+DETACHED = []  # background workers are never waited for; keeping the handles avoids finalizer noise
 SUMMARY_KEYS = ("n", "stage", "attempt", "status", "result", "raw", "session_id", "error", "tree_changed", "tree_after")
 
 
@@ -31,10 +37,58 @@ def cmd_init(args):
     return 0
 
 
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
 def cmd_call(args):
     run = Path(args.run).resolve()
     event = start_call(run, args.stage, args.cwd, args.prompt, args.context, args.schema, args.resume)
-    event = perform_call(run, event["n"])
+    if args.background:
+        log = run / "logs" / ("%s-%d.worker.log" % (event["stage"], event["attempt"]))
+        try:
+            with log.open("ab") as stream:
+                process = subprocess.Popen([PYTHON, str(BIN), "_worker", "--run", str(run), "--event", str(event["n"])],
+                                           stdin=subprocess.DEVNULL, stdout=stream, stderr=stream, start_new_session=True)
+                DETACHED.append(process)
+        except OSError as exc:
+            event = J.update(run, event["n"], status="failed", finished_at=J.utc_now(),
+                             error="cannot start the background worker: %s" % exc)
+        else:
+            event = J.update(run, event["n"], pid=process.pid)
+    else:
+        event = perform_call(run, event["n"])
+    emit(summary(event))
+    return EXIT[event["status"]]
+
+
+def cmd_worker(args):
+    perform_call(args.run, args.event)
+    return 0
+
+
+def cmd_wait(args):
+    deadline = time.monotonic() + args.timeout
+    while True:
+        event = J.load(args.run)["events"][args.event - 1]
+        if event["status"] != "running":
+            break
+        if event.get("pid") and not alive(event["pid"]):
+            def settle(journal):
+                entry = journal["events"][args.event - 1]
+                if entry["status"] == "running":
+                    entry.update(status="failed", finished_at=J.utc_now(),
+                                 error="worker process exited without recording an outcome; see logs/")
+                return entry
+            event = J.transact(args.run, settle)
+            break
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(min(2, max(0.05, deadline - time.monotonic())))
     emit(summary(event))
     return EXIT[event["status"]]
 
@@ -91,7 +145,19 @@ def build_parser():
     p.add_argument("--schema", help="schema name; defaults by stage")
     p.add_argument("--resume", metavar="SESSION_ID", help="continue this Codex session instead of starting a new one")
     p.add_argument("--cwd", default=".", help="directory Codex reads; the reviewed state is hashed here")
+    p.add_argument("--background", action="store_true", help="detach the call; poll it with wait")
     p.set_defaults(func=cmd_call)
+
+    p = sub.add_parser("_worker")
+    p.add_argument("--run", required=True)
+    p.add_argument("--event", type=int, required=True)
+    p.set_defaults(func=cmd_worker)
+
+    p = sub.add_parser("wait", help="wait for a background call")
+    p.add_argument("--run", required=True)
+    p.add_argument("--event", type=int, required=True)
+    p.add_argument("--timeout", type=float, default=600)
+    p.set_defaults(func=cmd_wait)
 
     p = sub.add_parser("status", help="print the run journal")
     p.add_argument("--run", required=True)

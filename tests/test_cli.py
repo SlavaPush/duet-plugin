@@ -84,3 +84,38 @@ class CommandTests(DuetCase):
         code, out = self.run_cli("tree", "--cwd", str(self.project))
         self.assertEqual(code, 0)
         self.assertEqual(set(out), {"head", "hash"})
+
+    def test_background_call_and_wait(self):
+        run = self.init()
+        os.environ["DUET_FAKE_MODE"] = "slow"
+        code, out = self.call(run, "--background")
+        self.assertEqual((code, out["status"]), (4, "running"))
+        self.assertTrue(J.load(run)["events"][0]["pid"])
+        code, out = self.run_cli("wait", "--run", str(run), "--event", "1", "--timeout", "0.3")
+        self.assertEqual((code, out["status"]), (4, "running"))
+        self.release.touch()
+        code, out = self.run_cli("wait", "--run", str(run), "--event", "1", "--timeout", "20")
+        self.assertEqual((code, out["status"]), (0, "completed"))
+        self.assertTrue((run / "code-review-1.json").exists())
+
+    def test_wait_detects_a_dead_worker_but_keeps_a_finished_result(self):
+        run = self.init()
+        event = J.append(run, {"kind": "call", "stage": "code-review", "attempt": 1, "status": "running", "pid": 2147483000})
+        code, out = self.run_cli("wait", "--run", str(run), "--event", str(event["n"]), "--timeout", "5")
+        self.assertEqual((code, out["status"]), (1, "failed"))
+        self.assertIn("worker", out["error"])
+        done = J.append(run, {"kind": "call", "stage": "code-review", "attempt": 2, "status": "completed", "pid": 2147483000})
+        code, out = self.run_cli("wait", "--run", str(run), "--event", str(done["n"]), "--timeout", "5")
+        self.assertEqual((code, out["status"]), (0, "completed"))
+
+    def test_background_spawn_failure_ends_failed(self):
+        run = self.init()
+        from duet_codex import cli
+        original = cli.PYTHON
+        cli.PYTHON = "/nonexistent/python3"
+        try:
+            code, out = self.call(run, "--background")
+        finally:
+            cli.PYTHON = original
+        self.assertEqual((code, out["status"]), (1, "failed"))
+        self.assertIn("worker", out["error"])
