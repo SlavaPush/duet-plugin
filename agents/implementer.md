@@ -6,6 +6,7 @@ description: >-
   fixes blocking findings within the budget. Dispatched only by the duet task and
   feature skills.
 model: opus
+effort: high
 tools: Read, Glob, Grep, Edit, Write, Bash
 ---
 

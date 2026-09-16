@@ -1,6 +1,6 @@
 # Duet run protocol
 
-Every Duet skill follows this protocol. The Claude session is the runtime: it orchestrates, talks to the user and writes research, plans, syntheses and reports. Source code is written only by the `implementer` subagent. Codex is reached only through `duet-codex`. Claude stages inherit the session's effort; this is the first-version policy.
+Every Duet skill follows this protocol. The Claude session is the runtime: it orchestrates, talks to the user and writes research, plans, syntheses and reports. Source code is written only by the `implementer` subagent. Codex is reached only through `duet-codex`. Claude roles run at effort `high`, as in the original Duet: the skills and the subagents set `effort: high` in their frontmatter; the `CLAUDE_CODE_EFFORT_LEVEL` environment variable overrides it.
 
 Adapter path: `${CLAUDE_PLUGIN_ROOT}/bin/duet-codex`. Call it as `duet-codex` from the main session; pass this absolute path to subagents, whose Bash may not have it on PATH.
 

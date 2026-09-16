@@ -29,6 +29,7 @@ For a local checkout: `claude --plugin-dir /path/to/duet-plugin`.
 - `~/.config/duet/roles.json` overrides any subset of `config/roles.json` (Codex model, per-stage effort, resume effort, per-run call limits, timeouts). Unknown keys and invalid values are errors.
 - `~/.config/duet/settings.json` may define `rules`: named lists of Markdown files (paths relative to that directory) that skills pass to reviewers and the implementer when you name them.
 - Optional `.duet.json` in a project: `{"checks": ["npm test", "npm run lint"]}`.
+- Claude roles run at effort `high` (set in the skills' and agents' frontmatter, as in the original Duet); `CLAUDE_CODE_EFFORT_LEVEL` overrides it. Codex effort per stage lives in `roles.json`.
 
 ## Runs
 

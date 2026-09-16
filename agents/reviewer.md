@@ -5,6 +5,7 @@ description: >-
   set described in its prompt and returns findings with C-n IDs as Markdown.
   Dispatched only by the duet review skill, always as a fresh agent.
 model: opus
+effort: high
 tools: Read, Glob, Grep
 ---
 

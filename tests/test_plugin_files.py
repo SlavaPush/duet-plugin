@@ -46,3 +46,9 @@ class SkillAndAgentFileTests(DuetCase):
         self.assertIn("tools: Read, Glob, Grep\n", reviewer + "\n")
         for header in (implementer, reviewer):
             self.assertIn("model: opus", header)
+            self.assertRegex(header, r"(?m)^effort: high$")
+
+    def test_skills_run_claude_stages_at_high_effort(self):
+        for name in ("task", "feature", "research", "review"):
+            header = FRONTMATTER.match((ROOT / "skills" / name / "SKILL.md").read_text()).group(1)
+            self.assertRegex(header, r"(?m)^effort: high$", name)

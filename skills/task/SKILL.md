@@ -5,6 +5,7 @@ description: >-
   in place, Codex reviews through duet-codex, bounded fixes follow, then the main
   session reviews the stage. Use when the user asks for a small change with Duet
   or with a Codex review.
+effort: high
 ---
 
 Read `${CLAUDE_PLUGIN_ROOT}/protocol.md` first and follow it throughout.

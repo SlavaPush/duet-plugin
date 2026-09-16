@@ -6,6 +6,7 @@ description: >-
   answer keeps disagreements visible. Use for questions like why something works
   this way, how to change the architecture, or any codebase question that needs a
   verified answer.
+effort: high
 ---
 
 Read `${CLAUDE_PLUGIN_ROOT}/protocol.md` first and follow it throughout.

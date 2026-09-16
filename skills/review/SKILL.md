@@ -5,6 +5,7 @@ description: >-
   Claude reviewer subagent and Codex review the same state separately, then the
   main session synthesizes findings, disagreements and coverage. Use for reviewing
   an MR or branch with Duet, or for a second opinion on local changes.
+effort: high
 ---
 
 Read `${CLAUDE_PLUGIN_ROOT}/protocol.md` first and follow it throughout.

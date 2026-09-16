@@ -5,6 +5,7 @@ description: >-
   implementation by the implementer subagent (Opus) in a worktree, project checks,
   Codex code review with bounded fixes, and a main-session stage review. Use when
   the user asks for a feature with Duet or wants plan review before implementation.
+effort: high
 ---
 
 Read `${CLAUDE_PLUGIN_ROOT}/protocol.md` first and follow it throughout.
