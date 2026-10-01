@@ -11,7 +11,7 @@ Duet is an independent project, not affiliated with Anthropic or OpenAI.
 | Command | Use it for | Changes files? |
 | --- | --- | --- |
 | `/duet:task` | A small change. The `implementer` subagent writes it, Codex reviews it, the main session reviews the stage. | Yes, in place. Never commits. |
-| `/duet:feature` | A larger change. Optional research, a plan reviewed by Codex, implementation, Codex code review, a final stage review by the main session. | Yes, in a git worktree on its own branch. Never merges. |
+| `/duet:feature` | A larger change. Optional research, a plan reviewed by Codex, implementation, Codex code review, a final stage review by the main session. | Yes, in place by default; in a git worktree on its own branch when you ask for one. Never commits or merges. |
 | `/duet:research` | A question about the codebase. Claims with evidence, a Codex critique, an answer that keeps disagreements visible. | No. |
 | `/duet:review` | A second opinion on a branch or the working tree. A Claude reviewer and Codex review the same state independently, then the main session writes a synthesis. | No. A branch review uses a temporary detached checkout inside the run directory. |
 
@@ -68,7 +68,7 @@ The main session writes the task, the acceptance criteria and the check commands
 /duet:feature Add CSV export to the reports page, with tests.
 ```
 
-The run directory stays in the original checkout. If the task needs it, a research stage runs first; then the main session enters a git worktree named after the task and writes `plan.md`. Codex reviews the plan, and the plan is revised at most twice. Implementation, checks, code review and the stage review follow as in `/duet:task`, inside the worktree and against the plan. At the end you get the worktree path, the branch and `report.md`, and you merge.
+If the task needs it, a research stage runs first. By default the work happens in place, in your working tree, like `/duet:task`. If you ask for a worktree in the request ("in a worktree", "on a separate branch") or set `"worktree": true` in `.duet.json`, the main session enters a git worktree named after the task instead; the run directory stays in the original checkout either way. The main session writes `plan.md`, Codex reviews the plan, and the plan is revised at most twice. Implementation, checks, code review and the stage review follow as in `/duet:task`, against the plan. At the end you get `report.md` and the change in your working tree, and you commit; with a worktree you also get its path and branch, and you merge.
 
 ### `/duet:research`
 
@@ -165,7 +165,7 @@ Unknown keys and invalid values are errors.
 
 `~/.config/duet/settings.json` may define `rules`: named lists of Markdown files, with paths relative to that directory, for example `{"rules": {"python": ["rules/python.md", "rules/tests.md"]}}`. A rule set applies only when you name it in your request.
 
-An optional `.duet.json` in a project lists the check commands for `/duet:task` and `/duet:feature`: `{"checks": ["npm test", "npm run lint"]}`.
+An optional `.duet.json` in a project lists the check commands for `/duet:task` and `/duet:feature`, and can make `/duet:feature` use a worktree by default in that project: `{"checks": ["npm test", "npm run lint"], "worktree": true}`.
 
 Claude roles run at effort `high`, set in the skill and agent frontmatter; the `CLAUDE_CODE_EFFORT_LEVEL` environment variable overrides it.
 
@@ -196,7 +196,7 @@ Claude roles run at effort `high`, set in the skill and agent frontmatter; the `
 - Update: `claude plugin marketplace update duet-plugin`, then `claude plugin update duet@duet-plugin`; restart Claude Code to apply the update.
 - Uninstall: `claude plugin uninstall duet@duet-plugin`, then `claude plugin marketplace remove duet-plugin`.
 
-What stays behind: `.duet/` directories in your projects and the `.duet/` line in their `.git/info/exclude`, `~/.config/duet/` if you created it, and the worktrees and branches created by `/duet:feature` (`git worktree list` shows them).
+What stays behind: `.duet/` directories in your projects and the `.duet/` line in their `.git/info/exclude`, `~/.config/duet/` if you created it, and the worktrees and branches created by `/duet:feature` when you asked for a worktree (`git worktree list` shows them).
 
 ## Development
 
