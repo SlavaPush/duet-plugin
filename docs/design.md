@@ -103,8 +103,9 @@ only as files.
 
 `<project>/.duet/runs/<scenario>-<YYYYMMDD-HHMMSS>/`, created by the skill. The adapter
 adds `.duet/` to `<project>/.git/info/exclude` on first use so the project's `.gitignore`
-stays untouched. For `feature`, the run directory lives in the original checkout while
-the code lives in the worktree; the worktree path is recorded as a `worktree` stage event.
+stays untouched. For `feature`, the run directory lives in the original checkout; when the
+user asks for a worktree, the code lives in that worktree and its path is recorded as a
+`worktree` stage event.
 
 Artifacts are plain files named by stage and attempt:
 
@@ -278,15 +279,18 @@ and any external materials into `context/`, and applying the user's rule sets fr
 ### `/duet:feature`
 
 1. Optional research step identical to `/duet:research`, when the task needs it.
-2. Main session enters a worktree (native isolation) for the task branch.
+2. Main session enters a worktree (native isolation) for the task branch only when the
+   user asks for one in the request or `.duet.json` sets `"worktree": true`; otherwise
+   the work happens in place, in the project root, as in `/duet:task`.
 3. Plan in `plan.md`: decisions, affected areas, risks, how acceptance criteria are checked.
    No line-by-line pseudocode.
 4. `duet-codex call --stage plan-review`; the main session fixes the plan and resumes the
    review, at most two fixes. `needs_human` when the reviewer asks for a human decision.
-5. Implementation as in `/duet:task` steps 3–4, inside the worktree, with the plan as
-   input. The code-review limit is shared across the implementer loop and the main
+5. Implementation as in `/duet:task` steps 3–4, in the project root or in the worktree
+   when one was entered, with the plan as input. The code-review limit is shared across the implementer loop and the main
    session's returns.
-6. `report.md` with plan, review history, checks and open items. The user merges.
+6. `report.md` with plan, review history, checks and open items. The user commits, or
+   merges when a worktree was used.
 
 ### `/duet:research`
 
@@ -358,7 +362,8 @@ main session reads it as text.
 `~/.config/duet/roles.json` overrides any subset; unknown keys and invalid values are
 errors; limits are positive integers without an upper cap. Rule sets keep
 their current home in `~/.config/duet/settings.json` and are passed as context files.
-`.duet.json` in a project is optional and has one field, `checks`.
+`.duet.json` in a project is optional and has two fields: `checks`, and `worktree`
+(boolean, default `false`) which makes `/duet:feature` use a worktree in that project.
 
 ## 10. Installation
 
@@ -391,8 +396,11 @@ lines of Python (adapter), about 250 lines of tests, a short README.
 
 ## 13. Decisions recorded during review
 
-- **Worktree ownership in `feature`.** The main session enters the worktree with the
-  native EnterWorktree tool. Its working directory, and therefore the working directory of
+- **Worktree is opt-in in `feature`.** By default `feature` works in place like `task`:
+  a worktree costs a separate checkout and a merge, which most features do not need. The
+  user asks for one per request, or per project through `.duet.json`.
+- **Worktree ownership in `feature`.** When used, the main session enters the worktree
+  with the native EnterWorktree tool. Its working directory, and therefore the working directory of
   every subagent it spawns, becomes the worktree. The implementer does not get its own
   `isolation: worktree`, because the main session must review the same files afterwards.
   This follows from the platform's tool semantics; the first real `/duet:feature` run
