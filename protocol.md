@@ -1,6 +1,6 @@
 # Duet run protocol
 
-Every Duet skill follows this protocol. The Claude session is the runtime: it orchestrates, talks to the user and writes research, plans, syntheses and reports. Source code is written only by the `implementer` subagent. Codex is reached only through `duet-codex`. Claude roles run at effort `high`, as in the original Duet: the skills and the subagents set `effort: high` in their frontmatter; the `CLAUDE_CODE_EFFORT_LEVEL` environment variable overrides it.
+Every Duet skill follows this protocol. The Claude session is the runtime: it orchestrates, talks to the user and writes research, plans, syntheses and reports. Source code is written only by the `implementer` subagent. Codex is reached only through `duet-codex`. Claude roles run at effort `high`: the skills and the subagents set `effort: high` in their frontmatter; the `CLAUDE_CODE_EFFORT_LEVEL` environment variable overrides it.
 
 Adapter path: `${CLAUDE_PLUGIN_ROOT}/bin/duet-codex`. Call it as `duet-codex` from the main session; pass this absolute path to subagents, whose Bash may not have it on PATH.
 
@@ -43,7 +43,7 @@ Both reviewers of a change must see the same complete subject. Define it once in
 - **Working tree against a base commit** (task, feature, working-tree review): `git diff <base> --stat` and `git diff <base>` (includes staged and unstaged changes to tracked files), plus `git ls-files --others --exclude-standard` listed as "untracked files: read in full". Reviewers run in the project root (or the feature worktree).
 - **Branch** (`--base <ref> --head <ref>`): resolve both once, `BASE=$(git rev-parse <base>)`, `HEAD_SHA=$(git rev-parse <head>)`; create a detached checkout `git worktree add --detach <run>/head $HEAD_SHA`; the subject is `git -C <run>/head diff $BASE...$HEAD_SHA --stat` and `git -C <run>/head diff $BASE...$HEAD_SHA`, saved to `<run>/context/diff.patch`. Reviewers run in `<run>/head` (Codex `--cwd <run>/head`; the reviewer subagent gets that path as its root). After synthesis, `git worktree remove <run>/head`; if removal fails, record the path in the report instead of forcing it.
 
-Order matters: record `freeze` with `duet-codex tree --cwd <reviewed dir>` before preparing the diff and material, compare again right before dispatching (rebuild the material if it changed), and once more after both reviews. Submodule contents are not hashed recursively; only the recorded submodule commit and its dirty flag are.
+Order matters: record `freeze` with `duet-codex tree --cwd <reviewed dir>` before preparing the diff and material, compare again right before dispatching (rebuild the material if it changed), and once more after both reviews. Submodule contents are not hashed recursively; only the recorded submodule commit and its dirty flag are. An untracked directory that is itself a git checkout (a linked worktree or an embedded repository) is hashed through its own tree state: its HEAD, its diff and its untracked files.
 
 ## Implementation stage
 

@@ -1,16 +1,16 @@
 ---
 name: review
 description: >-
-  Independent dual review of a branch, working tree or merge request. A fresh
+  Independent dual review of a branch, working tree or merge/pull request. A fresh
   Claude reviewer subagent and Codex review the same state separately, then the
   main session synthesizes findings, disagreements and coverage. Use for reviewing
-  an MR or branch with Duet, or for a second opinion on local changes.
+  an MR, PR or branch with Duet, or for a second opinion on local changes.
 effort: high
 ---
 
 Read `${CLAUDE_PLUGIN_ROOT}/protocol.md` first and follow it throughout.
 
-1. **Run.** In the project root: `duet-codex init --scenario review --cwd .`; note `<run>`. Determine `--base` (default: the merge-base with the repository's main branch) and either `--head <ref>` or the working tree. Write `<run>/task.md` with base, head (or "working tree"), the review goal and acceptance criteria if any. If the user gives a merge-request URL, fetch its title, description and discussion with this session's GitLab tools and save them to `<run>/context/mr.md`; the changes themselves always come from local git. Resolve rule sets if named.
+1. **Run.** In the project root: `duet-codex init --scenario review --cwd .`; note `<run>`. Determine `--base` (default: the merge-base with the repository's main branch) and either `--head <ref>` or the working tree. Write `<run>/task.md` with base, head (or "working tree"), the review goal and acceptance criteria if any. If the user gives a merge-request or pull-request URL, fetch its title, description and discussion with whatever tools this session has for that host (an MCP server, `gh`, `glab`) and save them to `<run>/context/mr.md`; the changes themselves always come from local git. Resolve rule sets if named.
 2. **Freeze.** Let `<root>` be the project root for a working-tree review; for a branch, resolve `BASE` and `HEAD_SHA`, create `<run>/head` with `git worktree add --detach <run>/head $HEAD_SHA`, and let `<root>` be `<run>/head`. Then `duet-codex tree --cwd <root>` and `duet-codex mark --run <run> --stage freeze --status done --note "<the printed json>"`. Tell the user not to edit files until the reviews finish.
 3. **Subject.** Prepare the review subject as the protocol's Review subject section defines: for a branch, write `<run>/context/diff.patch` from `git -C <run>/head diff $BASE...$HEAD_SHA`; for the working tree, the diff against base plus the untracked list. Write `<run>/review-material.md`: the subject (commands, the diff file path, untracked files), the goal, and the list of context files. Run `duet-codex tree --cwd <root>` again; if it differs from the frozen value, rebuild the material and freeze again before going on.
 4. **Dispatch both, independently.** (a) `duet-codex call --run <run> --stage mr-review --prompt <run>/review-material.md --cwd <root> [--context FILE]... --background`; note the printed `n`. (b) Dispatch the reviewer with the `Agent` tool, `subagent_type: "duet:reviewer"`, a fresh agent, in the background when the tool allows it, with: `<root>`, the contents of `review-material.md`, the diff file path, context file paths, and the task text. Neither gets the other's output.

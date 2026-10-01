@@ -2,5 +2,9 @@
   "name": "duet",
   "version": "0.1.0",
   "description": "Claude and Codex working together: small tasks, planned features, research and reviews with bounded, journaled Codex calls.",
-  "author": {"name": "Slava Pyshkin"}
+  "author": {"name": "Slava Pyshkin", "url": "https://github.com/SlavaPush"},
+  "homepage": "https://github.com/SlavaPush/duet-plugin",
+  "repository": "https://github.com/SlavaPush/duet-plugin",
+  "license": "MIT",
+  "keywords": ["codex", "code-review", "multi-agent", "research", "workflow"]
 }

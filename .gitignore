@@ -1,5 +1,17 @@
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editors and OS
 .DS_Store
-.duet/
 .idea/
+.vscode/
+
+# Claude Code and Duet
+.claude/settings.local.json
+.claude/worktrees/
+.duet/

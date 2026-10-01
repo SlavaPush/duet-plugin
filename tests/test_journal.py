@@ -1,3 +1,4 @@
+import hashlib
 import os
 import threading
 
@@ -87,6 +88,54 @@ class JournalTests(DuetCase):
         self.git("add", "-A")
         self.git("commit", "-qm", "edit")
         self.assertNotEqual(J.tree_state(self.project)["head"], clean["head"])
+
+    def test_tree_state_hash_format_for_an_untracked_file_is_stable(self):
+        (self.project / "note.txt").write_bytes(b"hello\n")
+        (self.project / "note.txt").chmod(0o644)
+        expected = hashlib.sha256(b"diff 0\n" + b"file 8 6\n" + b"note.txt" + b"hello\n").hexdigest()
+        self.assertEqual(J.tree_state(self.project)["hash"], expected)
+
+    def test_tree_state_hashes_a_linked_worktree_inside_the_project(self):
+        before = J.tree_state(self.project)
+        self.git("worktree", "add", "-q", ".claude/worktrees/demo", "-b", "demo")
+        added = J.tree_state(self.project)
+        self.assertNotEqual(added["hash"], before["hash"])
+        (self.project / ".claude/worktrees/demo/a.py").write_text("answer = 3\n")
+        self.assertNotEqual(J.tree_state(self.project)["hash"], added["hash"])
+
+    def test_tree_state_tracks_edits_commits_and_untracked_files_of_an_embedded_repository(self):
+        (self.project / "vendor").mkdir()
+        (self.project / "vendor" / "lib.py").write_text("value = 1\n")
+        self.git("-C", "vendor", "init", "-q")
+        self.git("-C", "vendor", "add", "-A")
+        self.git("-C", "vendor", "commit", "-qm", "base")
+        base = J.tree_state(self.project)
+        (self.project / "vendor" / "lib.py").write_text("value = 2\n")
+        edited = J.tree_state(self.project)
+        self.assertNotEqual(base["hash"], edited["hash"])
+        self.git("-C", "vendor", "commit", "-qam", "edit")
+        committed = J.tree_state(self.project)
+        self.assertNotEqual(edited["hash"], committed["hash"])
+        (self.project / "vendor" / "new.txt").write_text("new")
+        with_untracked = J.tree_state(self.project)
+        self.assertNotEqual(committed["hash"], with_untracked["hash"])
+        nested = J.tree_state(self.project / "vendor")
+        self.git("-C", "vendor", "commit", "--allow-empty", "-qm", "empty")
+        self.assertEqual(J.tree_state(self.project / "vendor")["hash"], nested["hash"])
+        self.assertNotEqual(J.tree_state(self.project)["hash"], with_untracked["hash"])
+
+    def test_tree_state_hashes_an_untracked_link_to_a_directory_as_a_link(self):
+        os.symlink("../bin", self.project / "tools")
+        self.assertTrue((self.project / "tools").is_dir())
+        expected = hashlib.sha256(b"diff 0\n" + b"link 5 6\n" + b"tools" + b"../bin").hexdigest()
+        self.assertEqual(J.tree_state(self.project)["hash"], expected)
+
+    def test_tree_state_rejects_an_embedded_repository_without_commits(self):
+        (self.project / "vendor").mkdir()
+        (self.project / "vendor" / "lib.py").write_text("value = 1\n")
+        self.git("-C", "vendor", "init", "-q")
+        with self.assertRaises(DuetError):
+            J.tree_state(self.project)
 
     def test_git_errors_are_actionable(self):
         with self.assertRaisesRegex(DuetError, "git"):

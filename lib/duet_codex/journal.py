@@ -56,6 +56,11 @@ def tree_state(cwd):
         path = root / os.fsdecode(name)
         if path.is_symlink():
             kind, data = b"link", os.fsencode(os.readlink(path))
+        elif path.is_dir():
+            if repo_root(path).resolve() != path.resolve():
+                raise DuetError("Untracked directory is not a repository root: %s" % path)
+            nested = tree_state(path)
+            kind, data = b"repo", ("%s %s" % (nested["head"], nested["hash"])).encode()
         else:
             kind = b"exec" if path.stat().st_mode & 0o111 else b"file"
             data = path.read_bytes()
