@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
+## 0.2.0 - 2026-11-06
 
 ### Added
 
@@ -12,9 +12,10 @@ All notable changes to this project are documented in this file. The format is b
 ### Changed
 
 - A resumed Codex round sends a one-line follow-up note instead of the role prompt and repeats `task.md` only when it changed since the last call of the same stage.
-
+- Every Codex call runs with `--background`, followed by a `duet-codex wait --timeout 540` loop, so a long review no longer depends on the Bash tool's timeout.
+- `/duet:review` writes `context/diff.patch` for a working-tree review too, saves `review-claude.md` only after the Codex call has finished, and reruns a stale `mr-review` by resuming the same Codex session.
+- The `implementer` subagent stops on a `needs_human` verdict and reports the Codex questions; the protocol names the effort of each role, the conditions to advance after a critique, and what to do when the tree hash differs at the stage review.
 - The `implementer` subagent runs at effort `medium`; the `reviewer` subagent runs on Fable.
-
 - `/duet:feature` now works in place by default, like `/duet:task`. A git worktree is used only when the request asks for one or `.duet.json` sets `"worktree": true`.
 
 ## 0.1.0 - 2026-10-01
