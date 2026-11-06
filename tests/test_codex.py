@@ -84,6 +84,121 @@ class CodexTests(DuetCase):
         self.assertEqual(self.calls()[1]["cwd"], str(self.project.resolve()))
         self.assertEqual(json.loads((self.run / done["result"]).read_text())["verdict"], "pass")
 
+    def test_resume_prompt_skips_role_and_unchanged_task(self):
+        run = J.create_run(self.project, "task", {"code-review": 9})
+        (run / "task.md").write_text("Fix the average function\n", encoding="utf-8")
+        role = (codex.PROMPT_DIR / "code-review.md").read_text(encoding="utf-8").splitlines()[0]
+        first = perform_call(run, start_call(run, "code-review", self.project, self.material, [self.rules])["n"])
+        resumed = perform_call(run, start_call(run, "code-review", self.project, self.material, [self.rules],
+                                               resume=first["session_id"])["n"])
+        self.assertEqual(resumed["status"], "completed", resumed["error"])
+        prompt = self.calls()[1]["prompt"]
+        self.assertNotIn(role, prompt)
+        self.assertNotIn("## Task", prompt)
+        self.assertTrue(prompt.startswith(codex.RESUME_INTRO))
+        self.assertIn("resolved_ids", prompt)
+        self.assertIn("## Material\n\nReview the diff of a.py", prompt)
+        self.assertIn("## Context: rules.md\n\nPrefer native elements.", prompt)
+        self.assertLess(resumed["prompt_bytes"], first["prompt_bytes"])
+        self.assertEqual(resumed["task_sha"], first["task_sha"])
+        (run / "task.md").write_text("Fix the median function\n", encoding="utf-8")
+        perform_call(run, start_call(run, "code-review", self.project, self.material, resume=first["session_id"])["n"])
+        prompt = self.calls()[2]["prompt"]
+        self.assertLess(prompt.index("## Task"), prompt.index("## Material"))
+        self.assertIn("Fix the median function", prompt)
+        self.assertNotIn(role, prompt)
+
+    def test_resume_after_an_old_journal_event_repeats_the_task(self):
+        run = J.create_run(self.project, "task", {"code-review": 9})
+        (run / "task.md").write_text("Fix the average function\n", encoding="utf-8")
+        first = perform_call(run, start_call(run, "code-review", self.project, self.material)["n"])
+        journal = J.load(run)
+        del journal["events"][0]["task_sha"]
+        J.save(run, journal)
+        perform_call(run, start_call(run, "code-review", self.project, self.material, resume=first["session_id"])["n"])
+        self.assertIn("Fix the average function", self.calls()[1]["prompt"])
+
+    def critique_run(self, text):
+        run = J.create_run(self.project, "research", {"critique": 9})
+        material = run / "research.md"
+        material.write_text(text, encoding="utf-8")
+        return run, material
+
+    def test_critique_checks_the_claim_headings_of_the_material(self):
+        run, material = self.critique_run("## Claims\n\n### R-1 (fact)\n\nSee R-9 in the text.\n\n### R-2\n\n"
+                                          "### R-1 (fact)\n\nR-9 again.\n")
+        event = start_call(run, "critique", self.project, material, [self.rules])
+        self.assertEqual(event["claim_ids"], ["R-1", "R-2"])
+        done = perform_call(run, event["n"])
+        self.assertEqual(done["status"], "completed", done["error"])
+        reviews = json.loads((run / done["result"]).read_text())["claim_reviews"]
+        self.assertEqual([review["id"] for review in reviews], ["R-1", "R-2"])
+
+    def test_critique_with_a_wrong_claim_list_is_invalid(self):
+        run, material = self.critique_run("### R-1 (fact)\n\n### R-2\n\n### R-3\n")
+        os.environ["DUET_FAKE_MODE"] = "wrong-claims"
+        done = perform_call(run, start_call(run, "critique", self.project, material)["n"])
+        self.assertEqual(done["status"], "invalid")
+        self.assertIsNone(done["result"])
+        self.assertTrue((run / done["raw"]).exists())
+        self.assertEqual(done["error"], "claim_reviews does not match the claims of the material: "
+                                        "missing R-2, R-3; repeated R-1; unknown R-9")
+
+    def test_critique_resume_checks_only_the_changed_claims(self):
+        run, material = self.critique_run("### R-1 (fact)\n\n### R-2\n\n### R-3\n")
+        first = perform_call(run, start_call(run, "critique", self.project, material)["n"])
+        reply = run / "reply.md"
+        reply.write_text("Reply to X-1.\n\n## Changed claims\n\n- `R-2`\n\n## Notes\n\nR-3 stays.\n", encoding="utf-8")
+        event = start_call(run, "critique", self.project, reply, resume=first["session_id"])
+        self.assertEqual(event["claim_ids"], ["R-2"])
+        done = perform_call(run, event["n"])
+        self.assertEqual(done["status"], "completed", done["error"])
+        os.environ["DUET_FAKE_MODE"] = "wrong-claims"
+        done = perform_call(run, start_call(run, "critique", self.project, reply, resume=first["session_id"])["n"])
+        self.assertEqual(done["status"], "invalid")
+        self.assertIn("repeated R-2; unknown R-9", done["error"])
+
+    def test_critique_repair_with_the_full_changed_claims_list_keeps_the_check(self):
+        run, material = self.critique_run("### R-1 (fact)\n\n### R-2\n")
+        os.environ["DUET_FAKE_MODE"] = "wrong-claims"
+        first = perform_call(run, start_call(run, "critique", self.project, material)["n"])
+        self.assertEqual(first["status"], "invalid")
+        repair = run / "repair.md"
+        repair.write_text("Return the same review as JSON.\n\n## Changed claims\n\n- R-1\n- R-2\n", encoding="utf-8")
+        again = perform_call(run, start_call(run, "critique", self.project, repair, resume=first["session_id"])["n"])
+        self.assertEqual(again["status"], "invalid")
+        self.assertIn("missing R-2", again["error"])
+        os.environ["DUET_FAKE_MODE"] = "ok"
+        done = perform_call(run, start_call(run, "critique", self.project, repair, resume=first["session_id"])["n"])
+        self.assertEqual((done["status"], done["claim_ids"]), ("completed", ["R-1", "R-2"]), done["error"])
+
+    def test_critique_resume_without_changed_claims_skips_the_check(self):
+        run, material = self.critique_run("### R-1 (fact)\n\n### R-2\n")
+        first = perform_call(run, start_call(run, "critique", self.project, material)["n"])
+        reply = run / "reply.md"
+        reply.write_text("Reply to X-1 about R-2.\n", encoding="utf-8")
+        os.environ["DUET_FAKE_MODE"] = "wrong-claims"
+        event = start_call(run, "critique", self.project, reply, resume=first["session_id"])
+        self.assertIsNone(event["claim_ids"])
+        done = perform_call(run, event["n"])
+        self.assertEqual(done["status"], "completed", done["error"])
+
+    def test_old_critique_events_skip_the_check(self):
+        run, material = self.critique_run("### R-1\n\n### R-2\n")
+        os.environ["DUET_FAKE_MODE"] = "wrong-claims"
+        event = start_call(run, "critique", self.project, material)
+        journal = J.load(run)
+        del journal["events"][0]["claim_ids"]
+        J.save(run, journal)
+        self.assertEqual(perform_call(run, event["n"])["status"], "completed")
+
+    def test_changed_claims_section_formats(self):
+        self.assertEqual(codex.claim_ids("## Changed claims\n\n- `R-1`\nR-12\n- R-3: new evidence\n\n# Next\n- R-4\n",
+                                         "sid"), ["R-1", "R-12", "R-3"])
+        self.assertEqual(codex.claim_ids("Reply.\n\n## Changed claims\n\n## Notes\n- R-1\n", "sid"), [])
+        self.assertIsNone(codex.claim_ids("### R-1\n", "sid"))
+        self.assertEqual(start_call(self.run, "code-review", self.project, self.material)["claim_ids"], None)
+
     def test_limit_is_enforced_before_spawn(self):
         for _ in range(2):
             perform_call(self.run, start_call(self.run, "code-review", self.project, self.material)["n"])

@@ -7,8 +7,11 @@ All notable changes to this project are documented in this file. The format is b
 ### Added
 
 - An optional `auto` list in `~/.config/duet/settings.json` selects a rule set when the request names none: the first entry whose `when` condition holds for the request applies.
+- `duet-codex` checks the claim list of a `critique` answer: each `### R-<n>` heading of the material (or each ID under `## Changed claims` in a resumed round) must appear exactly once in `claim_reviews`, otherwise the call is `invalid` and the error names the missing, repeated and unknown IDs.
 
 ### Changed
+
+- A resumed Codex round sends a one-line follow-up note instead of the role prompt and repeats `task.md` only when it changed since the last call of the same stage.
 
 - The `implementer` subagent runs at effort `medium`; the `reviewer` subagent runs on Fable.
 

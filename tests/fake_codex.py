@@ -2,10 +2,14 @@
 """Fake Codex CLI for offline tests.
 
 DUET_FAKE_MODE: ok | invalid (wrong shape) | garbage (not JSON) | fail (exit 1) | no-answer | no-session |
-turn-failed | slow (waits for DUET_FAKE_RELEASE).
+turn-failed | slow (waits for DUET_FAKE_RELEASE) | wrong-claims (critique repeats the first claim and adds R-9).
+
+A critique answer reviews the claim IDs found in the prompt: `### R-n` headings and the lines of a
+`## Changed claims` section; R-1 when there are none.
 """
 import json
 import os
+import re
 import sys
 import time
 
@@ -37,8 +41,16 @@ if mode == "invalid":
 elif mode == "garbage":
     body = "not json {"
 elif "claim_reviews" in schema["properties"]:
+    ids = re.findall(r"^### (R-\d+)\b", prompt, re.M)
+    changed = re.search(r"^## Changed claims[ \t]*$", prompt, re.M)
+    if changed:
+        section = re.split(r"^#", prompt[changed.end():], maxsplit=1, flags=re.M)[0]
+        ids += re.findall(r"^[ \t]*(?:- )?`?(R-\d+)\b", section, re.M)
+    ids = list(dict.fromkeys(ids)) or ["R-1"]
+    if mode == "wrong-claims":
+        ids = [ids[0], ids[0], "R-9"]
     body = json.dumps({"summary": "fake critique",
-                       "claim_reviews": [{"id": "R-1", "result": "confirmed", "note": "checked"}],
+                       "claim_reviews": [{"id": i, "result": "confirmed", "note": "checked"} for i in ids],
                        "findings": []})
 else:
     verdict = "pass" if "resume" in args else "changes_requested"

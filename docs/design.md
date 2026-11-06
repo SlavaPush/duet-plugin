@@ -229,7 +229,16 @@ codex exec -C CWD -m MODEL -c model_reasoning_effort='"EFFORT"' --sandbox read-o
 
 The prompt file is the role prompt from `prompts/`, `<run>/task.md` when it exists, the
 stage material and the listed context files, concatenated with headers; `result` and
-`raw` in the printed summary are absolute paths. `--resume` runs `codex exec resume ID`
+`raw` in the printed summary are absolute paths. A `--resume` prompt drops the role prompt
+for one line that asks the same session to continue in the same role and answer in the
+same schema (for the `review` schema, also to list closed findings in `resolved_ids`); the
+material and context sections stay. Every `call` event records `task_sha`, the sha256 of
+`task.md` (null without the file), and a resumed prompt includes `task.md` again only when
+the latest `call` event of the same stage has a different or no `task_sha`. For `critique`
+the event also records `claim_ids`: the `### R-<n>` headings of the material on a first
+call, the IDs listed under `## Changed claims` on `--resume` (null without that section, so
+the list is not checked). After the schema check, a `claim_reviews` that misses, repeats or
+adds an ID is `invalid`, and the error names the IDs. `--resume` runs `codex exec resume ID`
 from the target directory (resume has no `-C`) with `-c sandbox_mode='"read-only"'`,
 as the CLI requires. On completion the adapter checks the `turn.completed` event and the
 session ID from `thread.started`, copies the raw answer to `<stage>-<n>.raw.md`, validates
