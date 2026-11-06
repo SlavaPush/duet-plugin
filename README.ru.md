@@ -112,7 +112,7 @@ claude plugin install duet@duet-plugin
 
 ## Стоимость и лимиты
 
-Каждый запуск расходует ресурсы Claude и Codex. Способ оплаты зависит от того, как выполнен вход в каждый CLI: лимиты подписки или оплата API. Со стороны Claude работают основная сессия (модель вашей сессии) и субагенты `implementer` и `reviewer` (Opus), все с effort `high`. Со стороны Codex у каждого запуска есть лимит вызовов на этап:
+Каждый запуск расходует ресурсы Claude и Codex. Способ оплаты зависит от того, как выполнен вход в каждый CLI: лимиты подписки или оплата API. Со стороны Claude работают основная сессия (модель вашей сессии, effort `high`), субагент `implementer` (Opus, effort `medium`) и субагент `reviewer` (Fable, effort `high`). Со стороны Codex у каждого запуска есть лимит вызовов на этап:
 
 | Этап | Где используется | Вызовов на запуск, по умолчанию |
 | --- | --- | --- |
@@ -167,7 +167,7 @@ claude plugin install duet@duet-plugin
 
 Необязательный файл `.duet.json` в проекте задаёт команды проверки для `/duet:task` и `/duet:feature` и может включить worktree по умолчанию для `/duet:feature` в этом проекте: `{"checks": ["npm test", "npm run lint"], "worktree": true}`.
 
-Роли Claude работают с effort `high`. Это значение задано в frontmatter файлов skill и агентов. Переменная окружения `CLAUDE_CODE_EFFORT_LEVEL` переопределяет это значение.
+Роли Claude работают с effort `high`, кроме субагента `implementer`: он работает с effort `medium`. Эти значения задано в frontmatter файлов skill и агентов. Переменная окружения `CLAUDE_CODE_EFFORT_LEVEL` переопределяет это значение.
 
 ## Решение проблем
 

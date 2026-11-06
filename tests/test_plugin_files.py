@@ -47,9 +47,10 @@ class SkillAndAgentFileTests(DuetCase):
         reviewer = FRONTMATTER.match((ROOT / "agents/reviewer.md").read_text()).group(1)
         self.assertIn("tools: Read, Glob, Grep, Edit, Write, Bash", implementer)
         self.assertIn("tools: Read, Glob, Grep\n", reviewer + "\n")
-        for header in (implementer, reviewer):
-            self.assertIn("model: opus", header)
-            self.assertRegex(header, r"(?m)^effort: high$")
+        self.assertRegex(implementer, r"(?m)^model: opus$")
+        self.assertRegex(implementer, r"(?m)^effort: medium$")
+        self.assertRegex(reviewer, r"(?m)^model: fable$")
+        self.assertRegex(reviewer, r"(?m)^effort: high$")
 
     def test_skills_run_claude_stages_at_high_effort(self):
         for name in ("task", "feature", "research", "review"):

@@ -4,7 +4,7 @@ description: >-
   Independent read-only Claude reviewer for a Duet review run. Reviews the change
   set described in its prompt and returns findings with C-n IDs as Markdown.
   Dispatched only by the duet review skill, always as a fresh agent.
-model: opus
+model: fable
 effort: high
 tools: Read, Glob, Grep
 ---

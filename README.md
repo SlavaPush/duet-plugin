@@ -112,7 +112,7 @@ Each run lives in `<repo>/.duet/runs/<scenario>-<timestamp>/`, excluded from git
 
 ## Cost and limits
 
-Every run consumes Claude and Codex usage; how it is billed depends on how each CLI is signed in (subscription limits or API billing). On the Claude side: the main session (your session model) and the `implementer` and `reviewer` subagents (Opus), all at effort `high`. On the Codex side, every run has a call limit per stage:
+Every run consumes Claude and Codex usage; how it is billed depends on how each CLI is signed in (subscription limits or API billing). On the Claude side: the main session (your session model, effort `high`), the `implementer` subagent (Opus, effort `medium`) and the `reviewer` subagent (Fable, effort `high`). On the Codex side, every run has a call limit per stage:
 
 | Stage | Used by | Calls per run, default |
 | --- | --- | --- |
@@ -167,7 +167,7 @@ Unknown keys and invalid values are errors.
 
 An optional `.duet.json` in a project lists the check commands for `/duet:task` and `/duet:feature`, and can make `/duet:feature` use a worktree by default in that project: `{"checks": ["npm test", "npm run lint"], "worktree": true}`.
 
-Claude roles run at effort `high`, set in the skill and agent frontmatter; the `CLAUDE_CODE_EFFORT_LEVEL` environment variable overrides it.
+Claude roles run at effort `high`, except the `implementer` subagent at `medium`, set in the skill and agent frontmatter; the `CLAUDE_CODE_EFFORT_LEVEL` environment variable overrides it.
 
 ## Troubleshooting
 

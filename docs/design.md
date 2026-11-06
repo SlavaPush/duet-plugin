@@ -61,7 +61,7 @@ skills/feature/SKILL.md
 skills/research/SKILL.md
 skills/review/SKILL.md
 agents/implementer.md           writes code; model opus; tools Read, Glob, Grep, Edit, Write, Bash
-agents/reviewer.md              independent Claude review; model opus; tools Read, Glob, Grep
+agents/reviewer.md              independent Claude review; model fable; tools Read, Glob, Grep
 bin/duet-codex                  adapter over codex exec; Python 3.9+ stdlib; on PATH inside Bash
 lib/duet_codex/                 the adapter's Python package
 config/roles.json               default model/effort per Codex stage and per-run limits
@@ -87,13 +87,13 @@ plugin's `bin/` is on PATH, and reference shared files via `${CLAUDE_PLUGIN_ROOT
 | Stage | Executor | Default model / effort | Tools |
 | --- | --- | --- | --- |
 | research, plan, synthesis, reports, stage review | main session | session model, effort high via skill frontmatter | all, including MCP |
-| implement, checks, Codex code-review loop | `implementer` subagent | opus / high | Read, Glob, Grep, Edit, Write, Bash |
-| independent Claude review | `reviewer` subagent; returns Markdown in its final message, the main session saves `review-claude.md` | opus / high | Read, Glob, Grep |
+| implement, checks, Codex code-review loop | `implementer` subagent | opus / medium | Read, Glob, Grep, Edit, Write, Bash |
+| independent Claude review | `reviewer` subagent; returns Markdown in its final message, the main session saves `review-claude.md` | fable / high | Read, Glob, Grep |
 | plan-review, code-review, critique, mr-review | Codex via `duet-codex` | gpt-6-astra / xhigh | read-only sandbox, passed files |
 | follow-up rounds (`--resume`) | Codex | gpt-6-astra / high | same |
 
-Effort of Claude roles: the four skills and both subagents declare `effort: high` in their
-frontmatter; the platform lets `CLAUDE_CODE_EFFORT_LEVEL` override frontmatter. Subagent models are fixed in the agent files and can be overridden per call.
+Effort of Claude roles: the four skills and the `reviewer` subagent declare `effort: high`
+and the `implementer` subagent declares `effort: medium` in their frontmatter; the platform lets `CLAUDE_CODE_EFFORT_LEVEL` override frontmatter. Subagent models are fixed in the agent files and can be overridden per call.
 Plugin subagents ignore `mcpServers` and `permissionMode`, so MCP data reaches subagents
 only as files.
 
