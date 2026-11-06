@@ -1,6 +1,8 @@
 """One Codex call: reserve the attempt, run, keep the raw answer, validate, record the outcome."""
+import hashlib
 import json
 import os
+import re
 import signal
 import threading
 from pathlib import Path
@@ -12,6 +14,12 @@ from .process import excerpt, run_process
 from .schema import DEFAULT_SCHEMAS, SCHEMA_DIR, load_schema, validate_schema
 
 PROMPT_DIR = PLUGIN_ROOT / "prompts"
+RESUME_INTRO = ("This is a follow-up round: continue in the same role and the same session, and return only the JSON "
+                "of the same output schema.")
+RESUME_REVIEW = " List in `resolved_ids` the earlier findings that are now resolved."
+CLAIM_HEADING = re.compile(r"^### (R-\d+)\b", re.M)
+CHANGED_CLAIMS = re.compile(r"^## Changed claims[ \t]*$", re.M)
+CHANGED_CLAIM = re.compile(r"^[ \t]*(?:- )?`?(R-\d+)\b`?", re.M)
 
 
 def build_prompt(role_prompt, sections):
@@ -64,6 +72,28 @@ def read_text(path):
         raise DuetError("Cannot read %s: %s" % (path, exc)) from exc
 
 
+def claim_ids(material, resume):
+    if not resume:
+        return list(dict.fromkeys(CLAIM_HEADING.findall(material)))
+    match = CHANGED_CLAIMS.search(material)
+    if match is None:
+        return None
+    section = re.split(r"^#", material[match.end():], maxsplit=1, flags=re.M)[0]
+    return list(dict.fromkeys(CHANGED_CLAIM.findall(section)))
+
+
+def claim_mismatch(expected, reviews):
+    ids = [review["id"] for review in reviews]
+    seen = list(dict.fromkeys(ids))
+    problems = [("missing", [i for i in expected if i not in ids]),
+                ("repeated", [i for i in seen if ids.count(i) > 1]),
+                ("unknown", [i for i in seen if i not in expected])]
+    parts = ["%s %s" % (label, ", ".join(values)) for label, values in problems if values]
+    if parts:
+        return "claim_reviews does not match the claims of the material: " + "; ".join(parts)
+    return None
+
+
 def start_call(run, stage, cwd, prompt_file, context_files=(), schema=None, resume=None):
     """Reserve the attempt in the journal before anything runs; returns the journal event."""
     run = Path(run).resolve()
@@ -73,11 +103,15 @@ def start_call(run, stage, cwd, prompt_file, context_files=(), schema=None, resu
     if schema_name is None:
         raise DuetError("No default schema for stage %s; pass --schema" % stage)
     load_schema(schema_name)
-    role_prompt = read_text(PROMPT_DIR / (stage + ".md"))
-    sections = [("Task", read_text(run / "task.md"))] if (run / "task.md").exists() else []
-    sections.append(("Material", read_text(prompt_file)))
-    sections += [("Context: " + Path(path).name, read_text(path)) for path in context_files]
-    text = build_prompt(role_prompt, sections)
+    if resume:
+        role_prompt = RESUME_INTRO + (RESUME_REVIEW if schema_name == "review" else "")
+    else:
+        role_prompt = read_text(PROMPT_DIR / (stage + ".md"))
+    task = read_text(run / "task.md") if (run / "task.md").exists() else None
+    task_sha = hashlib.sha256(task.encode("utf-8")).hexdigest() if task is not None else None
+    material = read_text(prompt_file)
+    claims = claim_ids(material, resume) if stage == "critique" and schema_name == "critique" else None
+    contexts = [("Context: " + Path(path).name, read_text(path)) for path in context_files]
     tree = J.tree_state(cwd)
 
     def reserve(journal):
@@ -86,13 +120,20 @@ def start_call(run, stage, cwd, prompt_file, context_files=(), schema=None, resu
         if attempt > limit:
             raise LimitReached("Limit reached for %s: %d calls per run. Only the user may raise it: "
                                "duet-codex limit --run %s --stage %s --set N" % (stage, limit, run, stage))
+        previous = next((event for event in reversed(journal["events"])
+                         if event.get("kind") == "call" and event.get("stage") == stage), None)
+        sections = []
+        if task is not None and (not resume or previous is None or previous.get("task_sha") != task_sha):
+            sections.append(("Task", task))
+        text = build_prompt(role_prompt, sections + [("Material", material)] + contexts)
         prompt_name = "%s-%d.prompt.md" % (stage, attempt)
         (run / prompt_name).write_text(text, encoding="utf-8")
         entry = {
             "kind": "call", "stage": stage, "attempt": attempt, "provider": "codex",
             "model": settings["model"], "effort": settings["resume_effort"] if resume else settings["effort"],
             "schema": schema_name, "cwd": str(cwd), "prompt": prompt_name,
-            "prompt_bytes": len(text.encode("utf-8")), "resume_of": resume, "session_id": None,
+            "prompt_bytes": len(text.encode("utf-8")), "task_sha": task_sha, "claim_ids": claims,
+            "resume_of": resume, "session_id": None,
             "status": "running", "tree_before": tree, "tree_after": None, "tree_changed": None,
             "raw": "%s-%d.raw.md" % (stage, attempt), "result": None, "error": None, "returncode": None,
             "logs": None, "pid": os.getpid(), "started_at": J.utc_now(), "finished_at": None,
@@ -150,9 +191,17 @@ def perform_call(run, n):
                 except (ValueError, DuetError) as exc:
                     fields.update(status="invalid", error="answer does not match schema %s: %s" % (event["schema"], exc))
                 else:
-                    result = "%s-%d.json" % (event["stage"], event["attempt"])
-                    (run / result).write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-                    fields.update(status="completed", result=result)
+                    expected = event.get("claim_ids")
+                    mismatch = None
+                    if event["stage"] == "critique" and expected is not None:
+                        mismatch = claim_mismatch(expected, value["claim_reviews"])
+                    if mismatch:
+                        fields.update(status="invalid", error=mismatch)
+                    else:
+                        result = "%s-%d.json" % (event["stage"], event["attempt"])
+                        (run / result).write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n",
+                                                  encoding="utf-8")
+                        fields.update(status="completed", result=result)
         except Exception as exc:  # any failure must still leave a terminal status in the journal
             fields.update(status="failed", error="%s: %s" % (type(exc).__name__, exc))
         except BaseException as exc:  # KeyboardInterrupt, SystemExit: record, then propagate
