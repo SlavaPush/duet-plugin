@@ -56,3 +56,9 @@ class SkillAndAgentFileTests(DuetCase):
         for name in ("task", "feature", "research", "review"):
             header = FRONTMATTER.match((ROOT / "skills" / name / "SKILL.md").read_text()).group(1)
             self.assertRegex(header, r"(?m)^effort: high$", name)
+
+    def test_protocol_names_the_effort_of_each_role(self):
+        intro = (ROOT / "protocol.md").read_text().split("\n\n")[1]
+        self.assertRegex(intro, r"`implementer` subagent[^;.]*`effort: medium`")
+        self.assertRegex(intro, r"`reviewer` subagent[^;.]*`effort: high`")
+        self.assertNotIn("subagents set `effort: high`", intro)
