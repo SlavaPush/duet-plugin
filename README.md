@@ -127,7 +127,7 @@ By default, a call that starts a new Codex session runs at effort `xhigh`, a res
 
 ## Data and permissions
 
-- **Sent to OpenAI** through the Codex CLI: the assembled prompt (the role prompt, the run's `task.md`, the stage material such as a plan, a diff, check output or research, and any context files such as named rule sets or merge/pull request text), plus whatever Codex reads in the reviewed directory. Codex runs in a read-only sandbox (`codex exec --sandbox read-only`) and cannot edit files.
+- **Sent to OpenAI** through the Codex CLI: the assembled prompt (the role prompt, the run's `task.md`, the stage material such as a plan, a diff, check output or research, and any context files such as applied rule sets or merge/pull request text), plus whatever Codex reads in the reviewed directory. Codex runs in a read-only sandbox (`codex exec --sandbox read-only`) and cannot edit files.
 - **Sent to Anthropic**: the normal Claude Code session.
 - **Stored on disk** in plain text under `.duet/runs/`: assembled prompts, raw and parsed answers, and CLI logs, which include another copy of the prompt. On first use the adapter adds `.duet/` to `.git/info/exclude`; your `.gitignore` is not touched. Run directories are never deleted automatically; remove them yourself. Do not put secrets in task text.
 - **Permissions**: like any Claude Code plugin, Duet runs with your user's permissions. The `implementer` subagent has the `Bash`, `Edit` and `Write` tools.
@@ -163,7 +163,7 @@ To override any subset, create `~/.config/duet/roles.json` (`$XDG_CONFIG_HOME/du
 
 Unknown keys and invalid values are errors.
 
-`~/.config/duet/settings.json` may define `rules`: named lists of Markdown files, with paths relative to that directory, for example `{"rules": {"python": ["rules/python.md", "rules/tests.md"]}}`. A rule set applies only when you name it in your request.
+`~/.config/duet/settings.json` may define `rules`: named lists of Markdown files, with paths relative to that directory, for example `{"rules": {"python": ["rules/python.md", "rules/tests.md"]}}`. Rule sets named in your request apply. Otherwise the optional `auto` list picks one: `{"auto": [{"when": "The request touches React code", "use": "frontend"}, {"when": "The request touches code", "use": "lint"}]}`. The main session checks the `when` conditions in order against the request and the code it touches, applies the set of the first match, records the choice in `task.md` and tells you. Without `auto`, or when no condition holds, no rule set applies. Say "without rules" in the request to skip `auto`.
 
 An optional `.duet.json` in a project lists the check commands for `/duet:task` and `/duet:feature`, and can make `/duet:feature` use a worktree by default in that project: `{"checks": ["npm test", "npm run lint"], "worktree": true}`.
 

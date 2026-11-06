@@ -4,7 +4,13 @@ All notable changes to this project are documented in this file. The format is b
 
 ## Unreleased
 
+### Added
+
+- An optional `auto` list in `~/.config/duet/settings.json` selects a rule set when the request names none: the first entry whose `when` condition holds for the request applies.
+
 ### Changed
+
+- The `implementer` subagent runs at effort `medium`; the `reviewer` subagent runs on Fable.
 
 - `/duet:feature` now works in place by default, like `/duet:task`. A git worktree is used only when the request asks for one or `.duet.json` sets `"worktree": true`.
 

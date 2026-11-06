@@ -73,7 +73,14 @@ Used by `research` and, optionally, `feature`.
 
 ## Rule sets
 
-If the user names rule sets, read `~/.config/duet/settings.json` (`$XDG_CONFIG_HOME/duet/settings.json` when set): `rules` maps a name to file paths relative to that directory. Copy the files into `<run>/context/` and pass them with `--context` and in subagent prompts. Do not apply rule sets the user did not name.
+Read `~/.config/duet/settings.json` (`$XDG_CONFIG_HOME/duet/settings.json` when set) if it exists: `rules` maps a name to file paths relative to that directory; the optional `auto` is an ordered list of `{"when": "<condition>", "use": "<rule set name>"}`.
+
+1. If the user names rule sets, apply exactly those. If the user asks for no rule sets, apply none.
+2. Otherwise check the `auto` entries in order against the request, the code it touches and the project, and apply the rule set of the first entry whose `when` holds. If no entry holds, apply none.
+3. A name missing from `rules` is an error: stop and ask the user.
+4. Write the applied rule sets and the reason (named by the user, or the matching `when`) into `task.md`, and tell the user in one line before the first stage.
+
+Copy the files of the applied rule sets into `<run>/context/` and pass them with `--context` and in subagent prompts.
 
 ## Reports
 

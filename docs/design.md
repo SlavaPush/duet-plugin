@@ -256,7 +256,8 @@ new and small.
 
 Every skill starts by reading `protocol.md`, creating the run directory, saving `task.md`
 and any external materials into `context/`, and applying the user's rule sets from
-`~/.config/duet/settings.json` as context files when the user names them.
+`~/.config/duet/settings.json` as context files: the sets the user names, otherwise the set
+of the first `auto` entry whose condition holds for the request.
 
 ### `/duet:task`
 
@@ -361,7 +362,9 @@ main session reads it as text.
 
 `~/.config/duet/roles.json` overrides any subset; unknown keys and invalid values are
 errors; limits are positive integers without an upper cap. Rule sets keep
-their current home in `~/.config/duet/settings.json` and are passed as context files.
+their current home in `~/.config/duet/settings.json` and are passed as context files. The
+optional `auto` list there maps a natural-language condition to a rule set; the main
+session evaluates the conditions in order and the first match applies.
 `.duet.json` in a project is optional and has two fields: `checks`, and `worktree`
 (boolean, default `false`) which makes `/duet:feature` use a worktree in that project.
 
