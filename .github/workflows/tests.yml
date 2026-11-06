@@ -11,8 +11,12 @@ jobs:
   tests:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
+          # Python 3.9 is the oldest version README.md supports. actions/setup-python
+          # has no 3.9 build for the current ubuntu-latest, so Python comes from uv's
+          # standalone builds, which run on any Linux or macOS runner.
           - os: ubuntu-latest
             python: "3.9"
           - os: ubuntu-latest
@@ -21,7 +25,5 @@ jobs:
             python: "3.13"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-      - run: python3 -B -m unittest discover -s tests -v
+      - uses: astral-sh/setup-uv@v6
+      - run: uv run --no-project --python ${{ matrix.python }} python -B -m unittest discover -s tests -v
